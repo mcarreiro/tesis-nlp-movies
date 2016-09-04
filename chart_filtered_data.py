@@ -16,3 +16,11 @@ for i, label in enumerate(chart.xaxis.get_ticklabels()):
   if not i % 4 == 0:
     label.set_visible(False)
 mpl.savefig('investigation_charts/filtered.png', bbox_inches='tight')
+
+
+# 50's on
+gr = subtitles_index[subtitles_index.MovieYear >= 1950][['MovieID','MovieYear']].groupby('MovieYear')
+chart = gr.count().plot(kind='bar')
+for label in chart.xaxis.get_ticklabels()[::2]:
+  label.set_visible(False)
+mpl.savefig('investigation_charts/filtered_after_50.png', bbox_inches='tight')
