@@ -8,6 +8,8 @@ datasets_path = "/Users/vale/Facultad/Tesis/data/datasets/"
 with open(datasets_path + "filtered_index.p", 'rb') as f:
   subtitles_index = pickle.load(f, encoding='latin-1')
 
+print("Total nº of subs: ", len(subtitles_index.index))
+
 # Gráfico del dataset final
 gr = subtitles_index[['MovieID','MovieYear']].groupby('MovieYear')
 chart = gr.count().plot(kind='bar')
