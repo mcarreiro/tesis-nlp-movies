@@ -2,10 +2,9 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as mpl
 import pickle
+import config as CONFIG
 
-datasets_path = "/Users/vale/Facultad/Tesis/data/datasets/"
-
-with open(datasets_path + "filtered_index.p", 'rb') as f:
+with open(CONFIG.datasets_path + "filtered_index.p", 'rb') as f:
   subtitles_index = pickle.load(f, encoding='latin-1')
 
 print("Total nº of subs: ", len(subtitles_index.index))

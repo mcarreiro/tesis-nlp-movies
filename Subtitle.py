@@ -18,6 +18,8 @@ class Dialog(list):
   def set_end(self, end_time):
     self.end_time = end_time
 
+
+
 class Subtitle(object):
   """ Lee el archivo srt dado un número de pelicula y devuelve el texto y
     y los tiempos."""
