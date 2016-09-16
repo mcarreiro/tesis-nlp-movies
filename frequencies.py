@@ -42,10 +42,18 @@ class Analyzer(object):
         # result[key] = value / self.count_per_year[key]
 
       sorted_tuples = [(k, result[k]) for k in sorted(result)]
-      plt.bar(range(len(result)), [v for k,v in sorted_tuples])
-      plt.xticks(range(len(result)), [k for k,v in sorted_tuples])
+      sorted_tuples = [(k, Analyzer.res_or_zero(result, k)) for k in range(int(sorted_tuples[0][0]), int(sorted_tuples[len(sorted_tuples)-1][0]))]
+      plt.bar(range(len(sorted_tuples)), [v for k,v in sorted_tuples])
+      plt.xticks(range(len(sorted_tuples)), [k for k,v in sorted_tuples])
       locs, labels = plt.xticks()
       plt.setp(labels, rotation=90)
       plt.title("Word frequency for '%(word)s'" % locals())
       plt.show()
-      return result
+      return sorted_tuples
+
+  @staticmethod
+  def res_or_zero(res, k):
+    if k in res:
+      return res[k]
+    else:
+      return 0
