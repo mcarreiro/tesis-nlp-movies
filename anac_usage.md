@@ -5,7 +5,7 @@
 * $ source activate tesis (enter environment)
 * $ source deactivate (exit environment)
 
-Packages installes with ipython:
+Packages installed with ipython:
 (In case a selective uninstall is required)
     appnope:          0.1.0-py35_0 
     decorator:        4.0.10-py35_0
