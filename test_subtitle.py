@@ -13,7 +13,7 @@ def test_full_text_is_string():
 def test_context_if_word_list():
   assert isinstance(sub.context_of('police', time, 3), list)
 
-def test_context_is_correct():
+def test_context_is_accurate_for_3_secs():
   assert set(sub.context_of('police', time, 3)) == set(['investigation',
     'disaster',
     'continuing',
@@ -21,3 +21,20 @@ def test_context_is_correct():
     'bridge',
     'millennium',
     'cause'])
+
+def test_context_is_accurate_for_10_secs():
+  assert set(sub.context_of('police', time, 10)) == set(['investigation',
+    'disaster',
+    'continuing',
+    'police',
+    'bridge',
+    'millennium',
+    'cause',
+    'surrounding',
+    'remains',
+    'closed',
+    'survivors',
+    'halted',
+    'search',
+    'area',
+    'traffic'])
