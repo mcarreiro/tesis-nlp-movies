@@ -1,4 +1,4 @@
-from Subtitle import Subtitle
+from subtitle import Subtitle
 import pandas as pd
 import config as CONFIG
 import pickle
@@ -9,9 +9,11 @@ class Analyzer(object):
   def __init__(self):
     self.index = {}
     self.top_words = {}
+    self.full_index = {}
 
     with open(CONFIG.datasets_path + "word_count.p", 'rb') as f:
       self.count_per_year = pickle.load(f)
+
 
   def word_frequency_for(self, word):
     """ Result is array of tuples from first year where #{word} was mentioned to last.
@@ -35,6 +37,7 @@ class Analyzer(object):
       sorted_tuples = [(k, result[k]) for k in sorted(result)]
       sorted_tuples = [(k, Analyzer.res_or_zero(result, str(k))) for k in range(int(sorted_tuples[0][0]), int(sorted_tuples[len(sorted_tuples)-1][0]))]
       return sorted_tuples
+
 
   def chart_frequency_for(self, words, smoothing=0):
     """ Charts frequency for list of words chosen.
@@ -60,6 +63,37 @@ class Analyzer(object):
     plt.show()
     return None
 
+
+  def top_words_for(self, year, tolerance=0.7):
+    if not self.top_words:
+      with open(CONFIG.datasets_path + "top_words.p", 'rb') as f:
+        self.top_words = pickle.load(f)
+    prevalence = {}
+
+    for y,l in self.top_words.items():
+      for word in l:
+        if word in prevalence:
+          prevalence[word] += 1
+        else:
+          prevalence[word] = 1
+
+    return [ word for word in self.top_words[str(year)] if prevalence[word] < tolerance * (2014-1930) ]
+
+
+  # Levantar el índice: ~45s ~4.3GB
+  # Pointwise Mutual Information
+  def pmi_for(self, word1, word2, range_in_seconds):
+    if not self.full_index:
+      with open(CONFIG.datasets_path + "full_per_year/index_all.p", 'rb') as f:
+        self.full_index = pickle.load(f)
+    first_word_freq = word_frequency_for(word1)
+    second_word_freq = word_frequency_for(word2)
+    joined_frequency = Analyzer.joined_frequency_for(word1,word2,range_in_seconds)
+    # math.log(joined_frequency, 2) - math.log(first_word_freq * second_word_freq) PER YEAR
+    return 0
+
+  # Auxiliaries
+
   def smoothed(self, tuples, level):
     result = []
     counter = 0
@@ -79,24 +113,24 @@ class Analyzer(object):
       counter += 1
     return result
 
+
+  def joined_frequency_for(self, word1, word2, range_in_seconds):
+    word1_mentions = self.full_index[word1]
+    counts = {}
+    for year, mentions in word1_mentions.items():
+      for sub_id, times in mentions.items():
+        sub = Subtitle(sub_id)
+        for time in times:
+          context = sub.context_of(word1, time, range_in_seconds)
+          if word2 in context:
+            if year in counts:
+              counts[year] = 0
+            counts[year] += 1
+
+
   @staticmethod
   def res_or_zero(res, k):
     if k in res:
       return res[k]
     else:
       return 0
-
-  def top_words_for(self, year, tolerance):
-    if not self.top_words:
-      with open(CONFIG.datasets_path + "top_words.p", 'rb') as f:
-        self.top_words = pickle.load(f)
-    prevalence = {}
-
-    for y,l in self.top_words.items():
-      for word in l:
-        if word in prevalence:
-          prevalence[word] += 1
-        else:
-          prevalence[word] = 1
-
-    return [ word for word in self.top_words[str(year)] if prevalence[word] < tolerance * (2014-1930) ]

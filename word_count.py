@@ -1,7 +1,7 @@
 import pandas as pd
 import config as CONFIG
 import pickle
-from Subtitle import Subtitle
+from subtitle import Subtitle
 from tokenizer import Tokenizer
 
 with open(CONFIG.datasets_path + "filtered_index.p", 'rb') as f:

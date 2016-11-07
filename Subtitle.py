@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 import pysrt
 import gzip
-from datetime import datetime, date, timedelta
 import config as CONFIG
+from pysrt import SubRipTime
+from tokenizer import Tokenizer
 
 
 class Subtitle(object):
@@ -37,9 +38,18 @@ class Subtitle(object):
     return "".join(file_path[::-1]) + "".join(file_name) + ".gz"
 
 
-  def context_of(word, time, length):
-    subs.slice(starts_after={'minutes': 2, 'seconds': 30}, ends_before={'minutes': 3, 'seconds': 40})
-    return 0
+  def context_of(self, word, time, length):
+    t = SubRipTime.from_string(time)
+    delta = SubRipTime.from_string(length)
+    start = t - delta
+    end = t + delta
+    subs = subs.slice(starts_after={'minutes': start.minutes, 'seconds': start.seconds}, ends_before={'minutes': end.minutes, 'seconds': ends.seconds})
+    tokenizer = Tokenizer()
+    context = []
+    for line in subs:
+      tokens = tokenizer.full_run(line.text)
+      context = context ++ tokens
+    return list(set(context))
 
 
   def word_count(self):

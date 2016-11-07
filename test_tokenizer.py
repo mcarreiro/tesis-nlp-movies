@@ -1,5 +1,5 @@
 from tokenizer import Tokenizer
-from Subtitle import Subtitle
+from subtitle import Subtitle
 import re
 
 # 1953230595 = Harry Potter and the Half Blood Prince (hearing impaired)

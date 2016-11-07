@@ -1,6 +1,6 @@
 #coding=utf-8
 
-from Subtitle import Subtitle
+from subtitle import Subtitle
 import pandas as pd
 import numpy as np
 import random

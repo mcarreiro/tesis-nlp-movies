@@ -1,4 +1,4 @@
-from Subtitle import Subtitle
+from subtitle import Subtitle
 from tokenizer import Tokenizer
 import pickle
 import pandas as pd
