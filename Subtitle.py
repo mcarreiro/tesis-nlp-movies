@@ -38,17 +38,17 @@ class Subtitle(object):
     return "".join(file_path[::-1]) + "".join(file_name) + ".gz"
 
 
-  def context_of(self, word, time, length):
+  def context_of(self, word, time, length=10):
     t = SubRipTime.from_string(time)
-    delta = SubRipTime.from_string(length)
+    delta = SubRipTime.from_ordinal(length * 1000) # (ordinal is milliseconds)
     start = t - delta
     end = t + delta
-    subs = subs.slice(starts_after={'minutes': start.minutes, 'seconds': start.seconds}, ends_before={'minutes': end.minutes, 'seconds': ends.seconds})
+    subs = self.raw_sub.slice(starts_after=start, starts_before=end)
     tokenizer = Tokenizer()
     context = []
     for line in subs:
       tokens = tokenizer.full_run(line.text)
-      context = context ++ tokens
+      context = context + tokens
     return list(set(context))
 
 
