@@ -23,7 +23,7 @@ for year in range(start,2016):
   subs = subtitles_index[subtitles_index.MovieYear == year][["IDSubtitleFile", "MovieYear"]]
   index = {}
   for row in subs.itertuples():
-    subId = row.IDSubtitleFile
+    subId = str(int(row.IDSubtitleFile))
     print(subId)
     sub = Subtitle(int(subId))
 

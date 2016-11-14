@@ -39,17 +39,18 @@ class Subtitle(object):
 
 
   def context_of(self, word, time, length=10):
-    t = SubRipTime.from_string(time)
+    t = SubRipTime.from_string(time) + 1
+    sub = self.raw_sub.at(t)[0]
     delta = SubRipTime.from_ordinal(length * 1000) # (ordinal is milliseconds)
-    start = t - delta
-    end = t + delta
-    subs = self.raw_sub.slice(starts_after=start, starts_before=end)
+    start = sub.start - delta
+    end = sub.end + delta
+    subs = self.raw_sub.slice(ends_after=start, starts_before=end)
     tokenizer = Tokenizer()
     context = []
     for line in subs:
       tokens = tokenizer.full_run(line.text)
       context = context + tokens
-    return list(set(context))
+    return list(context)
 
 
   def word_count(self):

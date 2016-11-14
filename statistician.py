@@ -1,10 +1,11 @@
 from subtitle import Subtitle
 import pandas as pd
 import config as CONFIG
-import pickle
 import matplotlib.pyplot as plt
+import math
+import pickle
 
-class Analyzer(object):
+class Statistician(object):
 
   def __init__(self):
     self.index = {}
@@ -15,7 +16,7 @@ class Analyzer(object):
       self.count_per_year = pickle.load(f)
 
 
-  def word_frequency_for(self, word):
+  def word_frequency_for(self, word, chart_format=False):
     """ Result is array of tuples from first year where #{word} was mentioned to last.
         Includes every year in between and the count is total mentions.
         [(1950, 78),(1951, 30),...]
@@ -23,27 +24,27 @@ class Analyzer(object):
     if not self.index:
       with open(CONFIG.datasets_path + "frequency_index.p", 'rb') as f:
         self.index = pickle.load(f)
-    if word not in self.index:
-      print("This word is not in the index")
-      return [];
+    Statistician.error_if_not([word], self.index)
     else:
       mentions = self.index[word] # {1983: 3, 1990: 62, ...}
       result = {}
-      for key, value in mentions.items():
+      for year, count in mentions.items():
         # Mentions / word total
-        if int(key) in self.count_per_year:
-          result[key] = value / self.count_per_year[int(key)]
+        if int(year) in self.count_per_year:
+          result[year] = count / self.count_per_year[int(year)]
 
-      sorted_tuples = [(k, result[k]) for k in sorted(result)]
-      sorted_tuples = [(k, Analyzer.res_or_zero(result, str(k))) for k in range(int(sorted_tuples[0][0]), int(sorted_tuples[len(sorted_tuples)-1][0]))]
-      return sorted_tuples
+      if chart_format:
+        sorted_tuples = [(k, result[k]) for k in sorted(result)]
+        sorted_tuples = [(k, Statistician.res_or_zero(result, str(k))) for k in range(int(sorted_tuples[0][0]), int(sorted_tuples[len(sorted_tuples)-1][0]))]
+        result = sorted_tuples
+      return result
 
 
   def chart_frequency_for(self, words, smoothing=0):
     """ Charts frequency for list of words chosen.
         Smoothing (= n) parameter means result for 1 year (Y) equals (Y-N + .. + Y-1 + Y + Y+1 + .. + Y+N)/2N+1
     """
-    frequencies = [self.word_frequency_for(word) for word in words]
+    frequencies = [self.word_frequency_for(word, chart_format=True) for word in words]
     if smoothing > 0:
       frequencies = [self.smoothed(arr,smoothing) for arr in frequencies]
 
@@ -66,7 +67,7 @@ class Analyzer(object):
 
   def top_words_for(self, year, tolerance=0.7):
     if not self.top_words:
-      with open(CONFIG.datasets_path + "top_words.p", 'rb') as f:
+      with open(CONFIG.datasets_path + "deprecated/top_words.p", 'rb') as f:
         self.top_words = pickle.load(f)
     prevalence = {}
 
@@ -82,15 +83,23 @@ class Analyzer(object):
 
   # Levantar el índice: ~45s ~4.3GB
   # Pointwise Mutual Information
-  def pmi_for(self, word1, word2, range_in_seconds):
+  def pmi_for(self, word1, word2, range_in_seconds, custom_index=None):
+    if custom_index:
+      self.full_index = custom_index
     if not self.full_index:
-      with open(CONFIG.datasets_path + "full_per_year/index_all.p", 'rb') as f:
+      with open(CONFIG.datasets_path + "full_times_index.p", 'rb') as f:
         self.full_index = pickle.load(f)
-    first_word_freq = word_frequency_for(word1)
-    second_word_freq = word_frequency_for(word2)
-    joined_frequency = Analyzer.joined_frequency_for(word1,word2,range_in_seconds)
-    # math.log(joined_frequency, 2) - math.log(first_word_freq * second_word_freq) PER YEAR
-    return 0
+    first_word_freq = self.word_frequency_for(word1)
+    second_word_freq = self.word_frequency_for(word2)
+    joined_frequency = self.joined_frequency_for(word1,word2,range_in_seconds)
+
+    result = {}
+    for year in range(1930,2015):
+      if year in joined_frequency:
+        result[year] = math.log(joined_frequency[year], 2) - math.log(first_word_freq[str(year)] * second_word_freq[str(year)], 2)
+      else:
+        result[year] = 0
+    return result
 
   # Auxiliaries
 
@@ -115,17 +124,38 @@ class Analyzer(object):
 
 
   def joined_frequency_for(self, word1, word2, range_in_seconds):
-    word1_mentions = self.full_index[word1]
+    Statistician.error_if_not([word1, word2], self.full_index)
+    if self.sub_files(word1) > self.sub_files(word2):
+      word_mentions = self.full_index[word2]
+      index_word = word2
+      search_word = word1
+    else:
+      word_mentions = self.full_index[word1]
+      index_word = word1
+      search_word = word2
     counts = {}
-    for year, mentions in word1_mentions.items():
+    for year, mentions in word_mentions.items():
       for sub_id, times in mentions.items():
         sub = Subtitle(sub_id)
         for time in times:
-          context = sub.context_of(word1, time, range_in_seconds)
-          if word2 in context:
-            if year in counts:
+          context = sub.context_of(index_word, time, range_in_seconds)
+          if search_word in context:
+            if not year in counts:
               counts[year] = 0
-            counts[year] += 1
+            counts[year] += context.count(search_word)
+    result = {}
+    for year, count in counts.items():
+      if year in self.count_per_year:
+        result[year] = count / self.count_per_year[year]
+
+    return result
+
+
+  def sub_files(self, word):
+    count = 0
+    for year,movies in self.full_index[word].items():
+      count += len(movies)
+    return count
 
 
   @staticmethod
@@ -134,3 +164,9 @@ class Analyzer(object):
       return res[k]
     else:
       return 0
+
+  @staticmethod
+  def error_if_not(words,index):
+    for word in words:
+      if word not in index:
+        raise KeyError(word + " is not in index")

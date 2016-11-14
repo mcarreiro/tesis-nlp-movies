@@ -16,7 +16,7 @@ index = {}
 for row in subs.itertuples():
   print(row.IDSubtitleFile)
   sub = Subtitle(int(row.IDSubtitleFile))
-  year = str(int(row.MovieYear))
+  year = int(row.MovieYear)
   tokens = tokenizer.full_run(sub.full_text())
 
   for token in tokens:
@@ -27,5 +27,5 @@ for row in subs.itertuples():
     index[token][year] += 1
 
 
-with open(CONFIG.datasets_path + "frequency_index.p", 'wb') as file:
+with open(CONFIG.datasets_path + "frequency_index_with_stopwords.p", 'wb') as file:
   pickle.dump(index, file, protocol=pickle.HIGHEST_PROTOCOL)
