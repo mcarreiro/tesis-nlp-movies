@@ -14,9 +14,13 @@ for year in range(1930,2016):
   with open(file_name, 'rb') as f:
     partial = pickle.load(f, encoding='latin-1')
   for word, occurrences in partial.items():
+    movie_count = 0
     if not word in index:
       index[word] = {}
     index[word][year] = occurrences
+    movie_count += len(occurrences)
+  if movie_count < 10:
+    del index[word]
 
 with open(full_index_path + "/index_all.p", 'wb') as file:
   pickle.dump(index, file, protocol=pickle.HIGHEST_PROTOCOL)

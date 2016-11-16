@@ -25,19 +25,18 @@ class Statistician(object):
       with open(CONFIG.datasets_path + "frequency_index.p", 'rb') as f:
         self.index = pickle.load(f)
     Statistician.error_if_not([word], self.index)
-    else:
-      mentions = self.index[word] # {1983: 3, 1990: 62, ...}
-      result = {}
-      for year, count in mentions.items():
-        # Mentions / word total
-        if int(year) in self.count_per_year:
-          result[year] = count / self.count_per_year[int(year)]
+    mentions = self.index[word] # {1983: 3, 1990: 62, ...}
+    result = {}
+    for year, count in mentions.items():
+      # Mentions / word total
+      if int(year) in self.count_per_year:
+        result[year] = count / self.count_per_year[int(year)]
 
-      if chart_format:
-        sorted_tuples = [(k, result[k]) for k in sorted(result)]
-        sorted_tuples = [(k, Statistician.res_or_zero(result, str(k))) for k in range(int(sorted_tuples[0][0]), int(sorted_tuples[len(sorted_tuples)-1][0]))]
-        result = sorted_tuples
-      return result
+    if chart_format:
+      sorted_tuples = [(k, result[k]) for k in sorted(result)]
+      sorted_tuples = [(k, Statistician.res_or_zero(result, str(k))) for k in range(int(sorted_tuples[0][0]), int(sorted_tuples[len(sorted_tuples)-1][0]))]
+      result = sorted_tuples
+    return result
 
 
   def chart_frequency_for(self, words, smoothing=0):
