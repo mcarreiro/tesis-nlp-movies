@@ -22,7 +22,7 @@ class Statistician(object):
         [(1950, 78),(1951, 30),...]
     """
     if not self.index:
-      with open(CONFIG.datasets_path + "frequency_index.p", 'rb') as f:
+      with open(CONFIG.datasets_path + "frequency_index_with_stopwords.p", 'rb') as f:
         self.index = pickle.load(f)
     Statistician.error_if_not([word], self.index)
     mentions = self.index[word] # {1983: 3, 1990: 62, ...}
@@ -34,7 +34,7 @@ class Statistician(object):
 
     if chart_format:
       sorted_tuples = [(k, result[k]) for k in sorted(result)]
-      sorted_tuples = [(k, Statistician.res_or_zero(result, str(k))) for k in range(int(sorted_tuples[0][0]), int(sorted_tuples[len(sorted_tuples)-1][0]))]
+      sorted_tuples = [(k, Statistician.res_or_zero(result, k)) for k in range(int(sorted_tuples[0][0]), int(sorted_tuples[len(sorted_tuples)-1][0]))]
       result = sorted_tuples
     return result
 
@@ -60,6 +60,7 @@ class Statistician(object):
     locs, labels = plt.xticks()
     plt.setp(labels, rotation=90)
     plt.title("Word frequency for " + ",".join(words))
+    plt.ylim(ymin=0)
     plt.show()
     return None
 
@@ -80,24 +81,25 @@ class Statistician(object):
     return [ word for word in self.top_words[str(year)] if prevalence[word] < tolerance * (2014-1930) ]
 
 
-  # Levantar el índice: ~45s ~4.3GB
+  # Levantar el índice: ~45s ? ~5.4GB
   # Pointwise Mutual Information
   def pmi_for(self, word1, word2, range_in_seconds, custom_index=None):
+    first_word_freq = self.word_frequency_for(word1)
+    second_word_freq = self.word_frequency_for(word2)
+
     if custom_index:
       self.full_index = custom_index
     if not self.full_index:
       with open(CONFIG.datasets_path + "full_times_index.p", 'rb') as f:
         self.full_index = pickle.load(f)
-    first_word_freq = self.word_frequency_for(word1)
-    second_word_freq = self.word_frequency_for(word2)
     joined_frequency = self.joined_frequency_for(word1,word2,range_in_seconds)
 
     result = {}
     for year in range(1930,2015):
       if year in joined_frequency:
-        result[year] = math.log(joined_frequency[year], 2) - math.log(first_word_freq[str(year)] * second_word_freq[str(year)], 2)
+        result[year] = {'pmi': math.log(joined_frequency[year], 2) - math.log(first_word_freq[year] * second_word_freq[year], 2), 'first': self.index[word1], 'second': self.index[word2], 'n': self.count_per_year[year], 'joined': Statistician.res_or_zero(joined_frequency,year)}
       else:
-        result[year] = 0
+        result[year] = {'pmi': 0, 'first': self.index[word1], 'second': self.index[word2], 'n': self.count_per_year[year], 'joined': Statistician.res_or_zero(joined_frequency,year)}
     return result
 
   # Auxiliaries

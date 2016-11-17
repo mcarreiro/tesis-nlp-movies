@@ -2,6 +2,7 @@ from statistician import Statistician
 import fixture_statistician as Fixtures
 
 st = Statistician()
+pmi = st.pmi_for("granger","hermione",10, Fixtures.test_index)
 
 def test_entries_in_index_match_result():
   potter = st.word_frequency_for("potter")
@@ -14,8 +15,8 @@ def test_chart_format_has_every_year_in_between():
 def test_output_has_correct_frequencies():
   potter = st.word_frequency_for("potter")
   index_frequencies = st.index["potter"]
-  val_2009 = index_frequencies['2014'] / st.count_per_year[2014]
-  assert potter['2014'] == val_2009
+  val_2009 = index_frequencies[2014] / st.count_per_year[2014]
+  assert potter[2014] == val_2009
 
 def test_joined_frequency_counts_each_appearance():
   # Hermione: '00:22:03,213'(0, 22, 3, 783),*'00:22:03,783'(0, 22, 4, 443),*'00:22:04,443',*'00:22:04,443'
@@ -31,6 +32,11 @@ def test_joined_frequency_counts_each_appearance_backwards():
   freq = st.joined_frequency_for("granger","hermione",3)
   assert freq[2009] == 3 / st.count_per_year[2009]
 
-# def test_joined_frequency_correct_window():
-#   assert [k for k,v in st.pmi_for("granger","hermione",10, Fixtures.test_index).items() if v != 0] == [2009, 2014]
+def test_joined_frequency_correct_window():
+  assert [k for k,v in pmi.items() if v["pmi"] != 0] == [2009, 2014]
 
+def test_pmi_format_includes_counts():
+  year1 = pmi[2009]
+  assert year1["first"] == st.index["granger"]
+  assert year1["second"] == st.index["hermione"]
+  assert year1["n"] == st.count_per_year[2009]

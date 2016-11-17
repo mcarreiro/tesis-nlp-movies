@@ -40,16 +40,18 @@ class Subtitle(object):
 
   def context_of(self, word, time, length=10):
     t = SubRipTime.from_string(time) + 1
-    sub = self.raw_sub.at(t)[0]
-    delta = SubRipTime.from_ordinal(length * 1000) # (ordinal is milliseconds)
-    start = sub.start - delta
-    end = sub.end + delta
-    subs = self.raw_sub.slice(ends_after=start, starts_before=end)
-    tokenizer = Tokenizer()
+    sub = self.raw_sub.at(t)
     context = []
-    for line in subs:
-      tokens = tokenizer.full_run(line.text)
-      context = context + tokens
+    if sub:
+      sub = sub[0]
+      delta = SubRipTime.from_ordinal(length * 1000) # (ordinal is milliseconds)
+      start = sub.start - delta
+      end = sub.end + delta
+      subs = self.raw_sub.slice(ends_after=start, starts_before=end)
+      tokenizer = Tokenizer()
+      for line in subs:
+        tokens = tokenizer.full_run(line.text)
+        context = context + tokens
     return list(context)
 
 
