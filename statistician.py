@@ -22,7 +22,7 @@ class Statistician(object):
         [(1950, 78),(1951, 30),...]
     """
     if not self.index:
-      with open(CONFIG.datasets_path + "frequency_index_with_stopwords.p", 'rb') as f:
+      with open(CONFIG.datasets_path + "frequency_index_2017.p", 'rb') as f:
         self.index = pickle.load(f)
     Statistician.error_if_not([word], self.index)
     mentions = self.index[word] # {1983: 3, 1990: 62, ...}
@@ -90,16 +90,17 @@ class Statistician(object):
     if custom_index:
       self.full_index = custom_index
     if not self.full_index:
-      with open(CONFIG.datasets_path + "full_times_index.p", 'rb') as f:
+      with open(CONFIG.datasets_path + "index_all_2017.p", 'rb') as f:
         self.full_index = pickle.load(f)
-    joined_frequency = self.joined_frequency_for(word1,word2,range_in_seconds)
+    joined_frequency = self.joined_counts_for(word1,word2,range_in_seconds)
 
     result = {}
     for year in range(1930,2015):
       if year in joined_frequency:
-        result[year] = {'pmi': math.log(joined_frequency[year], 2) - math.log(first_word_freq[year] * second_word_freq[year], 2), 'first': self.index[word1], 'second': self.index[word2], 'n': self.count_per_year[year], 'joined': Statistician.res_or_zero(joined_frequency,year)}
+        result[year] = {'pmi': math.log((joined_frequency[year] / (self.index[word1][year] * self.index[word2][year]))*self.count_per_year[year], 2), 'first': Statistician.res_or_zero(self.index[word1], year), 'second': Statistician.res_or_zero(self.index[word2], year), 'n': self.count_per_year[year], 'joined': Statistician.res_or_zero(joined_frequency,year)
+        , 'first_freq': Statistician.res_or_zero(first_word_freq,year), 'second_freq': Statistician.res_or_zero(second_word_freq,year), "fraccion": (joined_frequency[year] / (self.index[word1][year] * self.index[word2][year]))}
       else:
-        result[year] = {'pmi': 0, 'first': self.index[word1], 'second': self.index[word2], 'n': self.count_per_year[year], 'joined': Statistician.res_or_zero(joined_frequency,year)}
+        result[year] = {'pmi': 0, 'first': Statistician.res_or_zero(self.index[word1],year), 'second': Statistician.res_or_zero(self.index[word2],year), 'n': self.count_per_year[year], 'joined': Statistician.res_or_zero(joined_frequency,year)}
     return result
 
   # Auxiliaries
@@ -141,6 +142,7 @@ class Statistician(object):
         for time in times:
           context = sub.context_of(index_word, time, range_in_seconds)
           if search_word in context:
+            # Hash.new 0 (mirar para python)
             if not year in counts:
               counts[year] = 0
             counts[year] += context.count(search_word)
@@ -148,8 +150,53 @@ class Statistician(object):
     for year, count in counts.items():
       if year in self.count_per_year:
         result[year] = count / self.count_per_year[year]
-
     return result
+
+
+  def joined_counts_for(self, word1, word2, range_in_seconds):
+    Statistician.error_if_not([word1, word2], self.full_index)
+    if self.sub_files(word1) > self.sub_files(word2):
+      word_mentions = self.full_index[word2]
+      index_word = word2
+      search_word = word1
+    else:
+      word_mentions = self.full_index[word1]
+      index_word = word1
+      search_word = word2
+    counts = {}
+    for year, mentions in word_mentions.items():
+      for sub_id, times in mentions.items():
+        sub = Subtitle(sub_id)
+        for time in times:
+          context = sub.context_of(index_word, time, range_in_seconds)
+          if search_word in context:
+            # Hash.new 0 (mirar para python)
+            if not year in counts:
+              counts[year] = 0
+            counts[year] += context.count(search_word)
+    return counts
+
+
+  def squash_years_into(self, result, years=5):
+    new = True
+    squashed = {}
+    for year,data in result.items():
+      if new:
+        year_count = 1
+        first = 0
+        second = 0
+        joined = 0
+        n = 0
+        new = False
+      first += data["first"]
+      second += data["second"]
+      joined += data["joined"]
+      n += data["n"]
+      year_count += 1
+      if year_count == years:
+        new = True
+        squashed[year] = {"first": first, "second": second, "n": n, "joined": joined, "pmi": math.log((joined / (first * second))*n,2)}
+    return squashed
 
 
   def sub_files(self, word):
@@ -158,6 +205,15 @@ class Statistician(object):
       count += len(movies)
     return count
 
+
+  @staticmethod
+  def one_year(index,year):
+    res = {}
+    for word,years in index.items():
+        if year in years.keys():
+            res[word] = {}
+            res[word][year] = years[year]
+    return res
 
   @staticmethod
   def res_or_zero(res, k):

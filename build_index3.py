@@ -5,11 +5,11 @@ import pandas as pd
 import os
 import config as CONFIG
 
-with open(CONFIG.datasets_path + "filtered_index.p", 'rb') as f:
+with open(CONFIG.datasets_path + "filtered_index_2017.p", 'rb') as f:
   subtitles_index = pickle.load(f, encoding='latin-1')
 
 tokenizer = Tokenizer()
-full_index_path = CONFIG.datasets_path + "full_per_year"
+full_index_path = CONFIG.datasets_path + "full_per_year_2017"
 if os.path.exists(full_index_path):
   files = os.listdir(full_index_path)
   start = 1930 + len(files)
@@ -25,18 +25,20 @@ for year in range(start,2016):
   for row in subs.itertuples():
     subId = str(int(row.IDSubtitleFile))
     print(subId)
-    sub = Subtitle(int(subId))
+    try:
+      sub = Subtitle(int(subId))
 
-    for line in sub.raw_sub:
-      tokens = tokenizer.full_run(line.text)
-      timestamp = line.start.__str__()
-      for token in tokens:
-        if not token in index:
-          index[token] = {}
-        if not subId in index[token]:
-          index[token][subId] = []
-        index[token][subId].append(timestamp)
-
+      for line in sub.raw_sub:
+        tokens = tokenizer.full_run(line.text)
+        timestamp = line.start.__str__()
+        for token in tokens:
+          if not token in index:
+            index[token] = {}
+          if not subId in index[token]:
+            index[token][subId] = []
+          index[token][subId].append(timestamp)
+    except:
+      print("ERROR")
 
   with open(full_index_path + "/index_" + str(year) + ".p", 'wb') as file:
     pickle.dump(index, file, protocol=pickle.HIGHEST_PROTOCOL)

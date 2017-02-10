@@ -5,7 +5,7 @@ import pandas as pd
 import os
 import config as CONFIG
 
-full_index_path = CONFIG.datasets_path + "full_per_year"
+full_index_path = CONFIG.datasets_path + "full_per_year_2017"
 files = os.listdir(full_index_path)
 
 index = {}
@@ -22,5 +22,5 @@ for year in range(1930,2016):
   if movie_count < 10:
     del index[word]
 
-with open(full_index_path + "/index_all.p", 'wb') as file:
+with open(full_index_path + "/index_all_2017.p", 'wb') as file:
   pickle.dump(index, file, protocol=pickle.HIGHEST_PROTOCOL)
