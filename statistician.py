@@ -1,7 +1,6 @@
 from subtitle import Subtitle
 import pandas as pd
 import config as CONFIG
-import matplotlib.pyplot as plt
 import math
 import pickle
 
@@ -43,6 +42,7 @@ class Statistician(object):
     """ Charts frequency for list of words chosen.
         Smoothing (= n) parameter means result for 1 year (Y) equals (Y-N + .. + Y-1 + Y + Y+1 + .. + Y+N)/2N+1
     """
+    import matplotlib.pyplot as plt
     frequencies = [self.word_frequency_for(word, chart_format=True) for word in words]
     if smoothing > 0:
       frequencies = [self.smoothed(arr,smoothing) for arr in frequencies]

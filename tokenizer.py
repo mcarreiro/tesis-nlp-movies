@@ -41,5 +41,5 @@ class Tokenizer(object):
   def full_run(self, text):
     result = self.clean(text)
     result = self.tokenize(result)
-    # result = self.filter_stopwords(result)
+    result = self.filter_stopwords(result)
     return result
