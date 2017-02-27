@@ -6,6 +6,7 @@ import pandas as pd
 import config as CONFIG
 import pickle
 import os
+import math
 
 class CooccurrenceMatrix(object):
 
@@ -56,7 +57,8 @@ class CooccurrenceMatrix(object):
         print("ERROR")
 
     matrix = coo_matrix((count, (row, col)))
-    CooccurrenceMatrix.save_to_file(matrix, word_to_index, year)
+    m = matrix.tocsr()
+    CooccurrenceMatrix.save_to_file(m, word_to_index, year)
     [word_to_index, matrix]
 
 
@@ -74,7 +76,7 @@ class CooccurrenceMatrix(object):
     folder_path = CONFIG.datasets_path + "cooccurrence_matrices/"
     if os.path.exists(folder_path):
       files = os.listdir(folder_path)
-      start = 1930 + len(files)
+      start = 1930 + math.floor(len(files) / 2)
     else:
       os.makedirs(folder_path)
       start = 1930

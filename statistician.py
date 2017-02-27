@@ -13,6 +13,8 @@ class Statistician(object):
 
     with open(CONFIG.datasets_path + "word_count.p", 'rb') as f:
       self.count_per_year = pickle.load(f)
+    with open(CONFIG.datasets_path + "/cooccurrence_matrices/words_per_year.p", 'rb') as f:
+      self.words_per_year = pickle.load(f)
 
 
   def word_frequency_for(self, word, chart_format=False):
@@ -47,21 +49,7 @@ class Statistician(object):
     if smoothing > 0:
       frequencies = [self.smoothed(arr,smoothing) for arr in frequencies]
 
-    start_year = min([ tup[0][0] for tup in frequencies ])
-    max_year = max([ tup[len(frequencies) - 1][0] for tup in frequencies ])
-    year_range = range(start_year,max_year)
-
-    for series,word in zip(frequencies,words):
-      plt.plot(range(len(series)), [v for k,v in series], label=word)
-
-    # plt.xticks(range(len(year_range)), year_range)
-    plt.xticks(range(len(frequencies[0])), [k for k,v in frequencies[0]])
-    plt.legend(loc='best')
-    locs, labels = plt.xticks()
-    plt.setp(labels, rotation=90)
-    plt.title("Word frequency for " + ",".join(words))
-    plt.ylim(ymin=0)
-    plt.show()
+    self.chart(frequencies, words)
     return None
 
 
@@ -81,27 +69,68 @@ class Statistician(object):
     return [ word for word in self.top_words[str(year)] if prevalence[word] < tolerance * (2014-1930) ]
 
 
-  # Levantar el índice: ~45s ? ~5.4GB
   # Pointwise Mutual Information
-  def pmi_for(self, word1, word2, range_in_seconds, custom_index=None):
-    first_word_freq = self.word_frequency_for(word1)
-    second_word_freq = self.word_frequency_for(word2)
-
-    if custom_index:
-      self.full_index = custom_index
-    if not self.full_index:
-      with open(CONFIG.datasets_path + "index_all_2017.p", 'rb') as f:
-        self.full_index = pickle.load(f)
-    joined_frequency = self.joined_counts_for(word1,word2,range_in_seconds)
-
+  def pmi_for(self, word1, word2, chart_format=False, squashed=False):
     result = {}
-    for year in range(1930,2015):
-      if year in joined_frequency:
-        result[year] = {'pmi': math.log((joined_frequency[year] / (self.index[word1][year] * self.index[word2][year]))*self.count_per_year[year], 2), 'first': Statistician.res_or_zero(self.index[word1], year), 'second': Statistician.res_or_zero(self.index[word2], year), 'n': self.count_per_year[year], 'joined': Statistician.res_or_zero(joined_frequency,year)
-        , 'first_freq': Statistician.res_or_zero(first_word_freq,year), 'second_freq': Statistician.res_or_zero(second_word_freq,year), "fraccion": (joined_frequency[year] / (self.index[word1][year] * self.index[word2][year]))}
-      else:
-        result[year] = {'pmi': 0, 'first': Statistician.res_or_zero(self.index[word1],year), 'second': Statistician.res_or_zero(self.index[word2],year), 'n': self.count_per_year[year], 'joined': Statistician.res_or_zero(joined_frequency,year)}
+    for year in range(1930,2016):
+      calc = self.yearly_pmi_for(word1, word2, year)
+      result[year] = calc
+
+    if chart_format:
+      if squashed:
+        result = self.squash_years_into(result)
+      result_chart = {}
+      for k,v in result.items():
+        result_chart[k] = v["pmi"]
+      sorted_tuples = [(k, result_chart[k]) for k in sorted(result_chart)]
+      sorted_tuples = [(k, Statistician.res_or_zero(result_chart, k)) for k in range(int(sorted_tuples[0][0]), int(sorted_tuples[len(sorted_tuples)-1][0]))]
+      result = sorted_tuples
     return result
+
+  def chart_pmi_for(self, words1, words2, smoothing=0, squashed=False):
+    if not isinstance(words1, list):
+      words1 = [words1]
+    if not isinstance(words2, list):
+      words2 = [words2]
+    pairs = zip(words1,words2)
+    pmis = [self.pmi_for(w1, w2, chart_format=True, squashed=squashed) for w1,w2 in pairs]
+
+    if smoothing > 0:
+      pmis = [self.smoothed(arr,smoothing) for arr in pmis]
+
+    self.chart(pmis, words2)
+    return None
+
+  def yearly_pmi_for(self, concept1, concept2, year):
+    with open(CONFIG.datasets_path + "cooccurrence_matrices/" + str(year) + ".p", 'rb') as f:
+      matrix = pickle.load(f)
+    with open(CONFIG.datasets_path + "cooccurrence_matrices/" + str(year) + "_reference.p", 'rb') as f:
+      reference = pickle.load(f)
+
+    if not isinstance(concept1, list):
+      concept1 = [concept1]
+    if not isinstance(concept2, list):
+      concept2 = [concept2]
+
+    indeces1 = map(lambda concept: Statistician.res_or_none(reference,concept), concept1)
+    indeces1 = [i for i in indeces1 if i is not None]
+    indeces2 = map(lambda concept: Statistician.res_or_none(reference,concept), concept2)
+    indeces2 = [i for i in indeces2 if i is not None]
+
+    n = self.words_per_year[year]
+    joint_appearences = 0
+    for row in indeces1:
+      for col in indeces2:
+        joint_appearences += matrix[row,col]
+
+    first_row = sum(map(lambda index: matrix.getrow(index).sum(), indeces1))
+    second_row = sum(map(lambda index: matrix.getrow(index).sum(), indeces2))
+    if joint_appearences == 0:
+      pmi = 0
+    else:
+      pmi = math.log((joint_appearences / (first_row * second_row)) * n,2)
+    return {"pmi": pmi, "joint": joint_appearences, "first": first_row, "second": second_row, "n": n}
+
 
   # Auxiliaries
 
@@ -125,56 +154,22 @@ class Statistician(object):
     return result
 
 
-  def joined_frequency_for(self, word1, word2, range_in_seconds):
-    Statistician.error_if_not([word1, word2], self.full_index)
-    if self.sub_files(word1) > self.sub_files(word2):
-      word_mentions = self.full_index[word2]
-      index_word = word2
-      search_word = word1
-    else:
-      word_mentions = self.full_index[word1]
-      index_word = word1
-      search_word = word2
-    counts = {}
-    for year, mentions in word_mentions.items():
-      for sub_id, times in mentions.items():
-        sub = Subtitle(sub_id)
-        for time in times:
-          context = sub.context_of(index_word, time, range_in_seconds)
-          if search_word in context:
-            # Hash.new 0 (mirar para python)
-            if not year in counts:
-              counts[year] = 0
-            counts[year] += context.count(search_word)
-    result = {}
-    for year, count in counts.items():
-      if year in self.count_per_year:
-        result[year] = count / self.count_per_year[year]
-    return result
+  def chart(self, data, labels):
+    import matplotlib.pyplot as plt
+    start_year = min([ tup[0][0] for tup in data ])
+    max_year = max([ tup[len(data) - 1][0] for tup in data ])
+    year_range = range(start_year,max_year)
 
+    for series,words in zip(data,labels):
+      plt.plot(range(len(series)), [v for k,v in series], label=words)
 
-  def joined_counts_for(self, word1, word2, range_in_seconds):
-    Statistician.error_if_not([word1, word2], self.full_index)
-    if self.sub_files(word1) > self.sub_files(word2):
-      word_mentions = self.full_index[word2]
-      index_word = word2
-      search_word = word1
-    else:
-      word_mentions = self.full_index[word1]
-      index_word = word1
-      search_word = word2
-    counts = {}
-    for year, mentions in word_mentions.items():
-      for sub_id, times in mentions.items():
-        sub = Subtitle(sub_id)
-        for time in times:
-          context = sub.context_of(index_word, time, range_in_seconds)
-          if search_word in context:
-            # Hash.new 0 (mirar para python)
-            if not year in counts:
-              counts[year] = 0
-            counts[year] += context.count(search_word)
-    return counts
+    plt.xticks(range(len(data[0])), [k for k,v in data[0]])
+    plt.legend(loc='best')
+    locs, labels = plt.xticks()
+    plt.setp(labels, rotation=90)
+    # plt.title("PMI for " + ",".join(labels))
+    plt.ylim(ymin=0)
+    plt.show()
 
 
   def squash_years_into(self, result, years=5):
@@ -185,17 +180,22 @@ class Statistician(object):
         year_count = 1
         first = 0
         second = 0
-        joined = 0
+        joint = 0
         n = 0
         new = False
+        year_mark = year
       first += data["first"]
       second += data["second"]
-      joined += data["joined"]
+      joint += data["joint"]
       n += data["n"]
       year_count += 1
       if year_count == years:
         new = True
-        squashed[year] = {"first": first, "second": second, "n": n, "joined": joined, "pmi": math.log((joined / (first * second))*n,2)}
+        if joint == 0 or first == 0 or second == 0:
+          pmi = 0
+        else:
+          pmi = math.log((joint / (first * second))*n,2)
+        squashed[year_mark] = {"first": first, "second": second, "n": n, "joint": joint, "pmi": pmi}
     return squashed
 
 
@@ -221,6 +221,13 @@ class Statistician(object):
       return res[k]
     else:
       return 0
+
+  @staticmethod
+  def res_or_none(res, k):
+    if k in res:
+      return res[k]
+    else:
+      return None
 
   @staticmethod
   def error_if_not(words,index):
