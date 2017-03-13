@@ -3,6 +3,10 @@ import pandas as pd
 import config as CONFIG
 import math
 import pickle
+from gensim.models.word2vec import Word2Vec
+from sklearn.preprocessing import normalize
+import numpy as np
+
 
 class Statistician(object):
 
@@ -10,6 +14,7 @@ class Statistician(object):
     self.index = {}
     self.top_words = {}
     self.full_index = {}
+    self.w2v_model = None
 
     with open(CONFIG.datasets_path + "word_count.p", 'rb') as f:
       self.count_per_year = pickle.load(f)
@@ -70,10 +75,10 @@ class Statistician(object):
 
 
   # Pointwise Mutual Information
-  def pmi_for(self, word1, word2, chart_format=False, squashed=False):
+  def pmi_for(self, word1, word2, alpha=1, chart_format=False):
     result = {}
     for year in range(1930,2016):
-      calc = self.yearly_pmi_for(word1, word2, year)
+      calc = self.yearly_pmi_for(word1, word2, year, alpha)
       result[year] = calc
 
     if chart_format:
@@ -87,7 +92,8 @@ class Statistician(object):
       result = sorted_tuples
     return result
 
-  def chart_pmi_for(self, words1, words2, smoothing=0, squashed=False):
+
+  def chart_pmi_for(self, words1, words2, smoothing=0, alpha=1):
     if not isinstance(words1, list):
       words1 = [words1]
     if not isinstance(words2, list):
@@ -101,20 +107,56 @@ class Statistician(object):
     self.chart(pmis, words2)
     return None
 
-  def yearly_pmi_for(self, concept1, concept2, year):
+
+  def w2v_for(self, target_word, context_word):
+    w2v_model_path = CONFIG.datasets_path + "GoogleNews-vectors-negative300.bin"
+    if not self.w2v_model:
+      self.w2v_model = Word2Vec.load_word2vec_format(w2v_model_path, binary=True)
+    result = {}
+
+    target_vector = normalize(np.array([self.w2v_model[target_word]]),axis=1)[0]
+    for year in range(1930,2016):
+      calc = self.yearly_w2v_for(target_vector, context_word, year)
+      result[year] = calc
+    return result
+
+
+  def yearly_w2v_for(self, target_vector, context_word, year):
+    # Matrices are in CSR format
+    with open(CONFIG.datasets_path + "cooccurrence_matrices/" + str(year) + ".p", 'rb') as f:
+      matrix = pickle.load(f)
+    with open(CONFIG.datasets_path + "cooccurrence_matrices/" + str(year) + "_reference.p", 'rb') as f:
+      reference = pickle.load(f)
+    inv_reference = {v: k for k, v in reference.items()}
+
+    context_word_index = Statistician.res_or_none(reference,context_word)
+    row = matrix.getrow(context_word_index)
+    vectors = []
+    for index in row.indices:
+      word = inv_reference[index]
+      if word in self.w2v_model:
+        vectors.append(self.w2v_model[word])
+    vectors = normalize(vectors,axis=1)
+    return np.mean(np.matmul(vectors,np.transpose(target_vector)))
+
+
+
+  # Auxiliaries
+
+  def yearly_pmi_for(self, target_words, context_words, year, alpha=1):
     with open(CONFIG.datasets_path + "cooccurrence_matrices/" + str(year) + ".p", 'rb') as f:
       matrix = pickle.load(f)
     with open(CONFIG.datasets_path + "cooccurrence_matrices/" + str(year) + "_reference.p", 'rb') as f:
       reference = pickle.load(f)
 
-    if not isinstance(concept1, list):
-      concept1 = [concept1]
-    if not isinstance(concept2, list):
-      concept2 = [concept2]
+    if not isinstance(target_words, list):
+      target_words = [target_words]
+    if not isinstance(context_words, list):
+      context_words = [context_words]
 
-    indeces1 = map(lambda concept: Statistician.res_or_none(reference,concept), concept1)
+    indeces1 = map(lambda concept: Statistician.res_or_none(reference,concept), target_words)
     indeces1 = [i for i in indeces1 if i is not None]
-    indeces2 = map(lambda concept: Statistician.res_or_none(reference,concept), concept2)
+    indeces2 = map(lambda concept: Statistician.res_or_none(reference,concept), context_words)
     indeces2 = [i for i in indeces2 if i is not None]
 
     n = self.words_per_year[year]
@@ -128,11 +170,13 @@ class Statistician(object):
     if joint_appearences == 0:
       pmi = 0
     else:
-      pmi = math.log((joint_appearences / (first_row * second_row)) * n,2)
+      calc = math.log((joint_appearences / n) / ((first_row / n) * (second_row**alpha / n**alpha)),2)
+      if calc < 0:
+        pmi = 0
+      else:
+        pmi = calc
     return {"pmi": pmi, "joint": joint_appearences, "first": first_row, "second": second_row, "n": n}
 
-
-  # Auxiliaries
 
   def smoothed(self, tuples, level):
     result = []
@@ -156,12 +200,18 @@ class Statistician(object):
 
   def chart(self, data, labels):
     import matplotlib.pyplot as plt
+    plt.style.use('ggplot')
     start_year = min([ tup[0][0] for tup in data ])
     max_year = max([ tup[len(data) - 1][0] for tup in data ])
     year_range = range(start_year,max_year)
 
+    colormap = plt.cm.spectral
+    total = len(data)
+    i = 1
     for series,words in zip(data,labels):
-      plt.plot(range(len(series)), [v for k,v in series], label=words)
+      c = colormap(i/10.,1)
+      i += 1
+      plt.plot(range(len(series)), [v for k,v in series], label=words, color=c)
 
     plt.xticks(range(len(data[0])), [k for k,v in data[0]])
     plt.legend(loc='best')
