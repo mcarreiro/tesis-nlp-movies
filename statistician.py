@@ -39,9 +39,7 @@ class Statistician(object):
         result[year] = count / self.count_per_year[int(year)]
 
     if chart_format:
-      sorted_tuples = [(k, result[k]) for k in sorted(result)]
-      sorted_tuples = [(k, Statistician.res_or_zero(result, k)) for k in range(int(sorted_tuples[0][0]), int(sorted_tuples[len(sorted_tuples)-1][0]))]
-      result = sorted_tuples
+      result = self.format_for_chart(result)
     return result
 
 
@@ -82,14 +80,10 @@ class Statistician(object):
       result[year] = calc
 
     if chart_format:
-      if squashed:
-        result = self.squash_years_into(result)
       result_chart = {}
       for k,v in result.items():
         result_chart[k] = v["pmi"]
-      sorted_tuples = [(k, result_chart[k]) for k in sorted(result_chart)]
-      sorted_tuples = [(k, Statistician.res_or_zero(result_chart, k)) for k in range(int(sorted_tuples[0][0]), int(sorted_tuples[len(sorted_tuples)-1][0]))]
-      result = sorted_tuples
+      result = self.format_for_chart(result_chart)
     return result
 
 
@@ -99,7 +93,7 @@ class Statistician(object):
     if not isinstance(words2, list):
       words2 = [words2]
     pairs = zip(words1,words2)
-    pmis = [self.pmi_for(w1, w2, chart_format=True, squashed=squashed) for w1,w2 in pairs]
+    pmis = [self.pmi_for(w1, w2, chart_format=True) for w1,w2 in pairs]
 
     if smoothing > 0:
       pmis = [self.smoothed(arr,smoothing) for arr in pmis]
@@ -108,40 +102,80 @@ class Statistician(object):
     return None
 
 
-  def w2v_for(self, target_word, context_word):
-    w2v_model_path = CONFIG.datasets_path + "GoogleNews-vectors-negative300.bin"
+  def w2v_average_for(self, target_word, context_words, chart_format=False):
     if not self.w2v_model:
+      w2v_model_path = CONFIG.datasets_path + "GoogleNews-vectors-negative300.bin"
       self.w2v_model = Word2Vec.load_word2vec_format(w2v_model_path, binary=True)
-    result = {}
+    result = [{} for w in context_words]
 
-    target_vector = normalize(np.array([self.w2v_model[target_word]]),axis=1)[0]
     for year in range(1930,2016):
-      calc = self.yearly_w2v_for(target_vector, context_word, year)
-      result[year] = calc
+      calc = self.yearly_w2v_for(target_word, context_words, year)
+      for i in range(0,len(context_words)):
+        result[i][year] = calc[i]
+
+    if chart_format:
+      result = [self.format_for_chart(word) for word in result]
     return result
 
 
-  def yearly_w2v_for(self, target_vector, context_word, year):
+  def chart_average_w2v_for(self, target_word, context_words, smoothing=0):
+    w2v = self.w2v_average_for(target_word, context_words, chart_format=True)
+
+    if smoothing > 0:
+      w2v = [self.smoothed(arr,smoothing) for arr in w2v]
+
+    self.chart(w2v, context_words)
+    return None
+
+
+  def w2v_threshold_for(self, target_word, context_words, threshold=0.3, chart_format=False):
+    if not self.w2v_model:
+      w2v_model_path = CONFIG.datasets_path + "GoogleNews-vectors-negative300.bin"
+      self.w2v_model = Word2Vec.load_word2vec_format(w2v_model_path, binary=True)
+
+    for year in range(1930,2016):
+      calc = self.yearly_w2v_for(target_word, context_word, year)
+      result[year] = calc
+
+    if chart_format:
+      result = self.format_for_chart(result)
+    return result
+
+  # Auxiliaries
+
+  def yearly_w2v_for(self, target_word, context_words, year, threshold=None):
+    if not self.w2v_model:
+      w2v_model_path = CONFIG.datasets_path + "GoogleNews-vectors-negative300.bin"
+      self.w2v_model = Word2Vec.load_word2vec_format(w2v_model_path, binary=True)
     # Matrices are in CSR format
     with open(CONFIG.datasets_path + "cooccurrence_matrices/" + str(year) + ".p", 'rb') as f:
       matrix = pickle.load(f)
     with open(CONFIG.datasets_path + "cooccurrence_matrices/" + str(year) + "_reference.p", 'rb') as f:
       reference = pickle.load(f)
     inv_reference = {v: k for k, v in reference.items()}
+    target_vector = normalize(np.array([self.w2v_model[target_word]]),axis=1)[0]
 
-    context_word_index = Statistician.res_or_none(reference,context_word)
-    row = matrix.getrow(context_word_index)
+    context_word_indeces = [Statistician.res_or_none(reference,word) for word in context_words]
+    rows = [matrix.getrow(index) for index in context_word_indeces]
     vectors = []
-    for index in row.indices:
-      word = inv_reference[index]
-      if word in self.w2v_model:
-        vectors.append(self.w2v_model[word])
-    vectors = normalize(vectors,axis=1)
-    return np.mean(np.matmul(vectors,np.transpose(target_vector)))
+    for row in rows:
+      row_vectors = []
+      for index in row.indices:
+        word = inv_reference[index]
+        if word in self.w2v_model:
+          row_vectors.append(self.w2v_model[word])
+      vectors.append(row_vectors)
+    vectors = [normalize(row_vectors,axis=1) for row_vectors in vectors]
+    distances = [np.matmul(vector,np.transpose(target_vector)) for vector in vectors]
+    res = []
+    for row in distances:
+      if threshold:
+          total = len(row)
+          res.append(len([dist for dist in row if dist >= threshold]) / total)
+      else:
+        res.append(np.mean(row))
+    return res
 
-
-
-  # Auxiliaries
 
   def yearly_pmi_for(self, target_words, context_words, year, alpha=1):
     with open(CONFIG.datasets_path + "cooccurrence_matrices/" + str(year) + ".p", 'rb') as f:
@@ -177,6 +211,11 @@ class Statistician(object):
         pmi = calc
     return {"pmi": pmi, "joint": joint_appearences, "first": first_row, "second": second_row, "n": n}
 
+
+  def format_for_chart(self, hsh):
+    sorted_tuples = [(k, hsh[k]) for k in sorted(hsh)]
+    sorted_tuples = [(k, Statistician.res_or_zero(hsh, k)) for k in range(int(sorted_tuples[0][0]), int(sorted_tuples[len(sorted_tuples)-1][0]))]
+    return sorted_tuples
 
   def smoothed(self, tuples, level):
     result = []
