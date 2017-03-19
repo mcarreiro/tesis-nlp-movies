@@ -1,9 +1,9 @@
 import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse import csr_matrix
-from subtitle import Subtitle
+from repo.subtitle import Subtitle
+import repo.config as CONFIG
 import pandas as pd
-import config as CONFIG
 import pickle
 import os
 import math

@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 import pysrt
 import gzip
-import config as CONFIG
+from repo import config as CONFIG
 from pysrt import SubRipTime
-from tokenizer import Tokenizer
+from repo.tokenizer import Tokenizer
 
 
 class Subtitle(object):

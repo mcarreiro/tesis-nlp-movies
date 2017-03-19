@@ -1,6 +1,7 @@
 #coding=utf-8
-
-from subtitle import Subtitle
+import sys
+sys.path.append('..')
+from repo.subtitle import Subtitle
 import pandas as pd
 import numpy as np
 import random

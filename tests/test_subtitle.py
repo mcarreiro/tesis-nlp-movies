@@ -1,4 +1,6 @@
-from subtitle import Subtitle
+import sys
+sys.path.append('..')
+from repo.subtitle import Subtitle
 
 sub = Subtitle(1953230595)
 time8 = '00:02:55,641' # sub.raw_sub[8].start.__str__()

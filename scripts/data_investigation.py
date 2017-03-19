@@ -1,8 +1,10 @@
+import sys
+sys.path.append('..')
+from repo import config as CONFIG
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as mpl
 import pickle
-import config as CONFIG
 
 with open(CONFIG.datasets_path + "detalles_subtitulos.p", 'rb') as f:
   subtitles_index = pickle.load(f, encoding='latin-1')

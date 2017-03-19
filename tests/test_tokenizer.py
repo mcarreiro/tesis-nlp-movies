@@ -1,5 +1,7 @@
-from tokenizer import Tokenizer
-from subtitle import Subtitle
+import sys
+sys.path.append('..')
+from repo.subtitle import Subtitle
+from repo.tokenizer import Tokenizer
 import re
 
 # 1953230595 = Harry Potter and the Half Blood Prince (hearing impaired)

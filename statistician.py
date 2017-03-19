@@ -1,6 +1,6 @@
-from subtitle import Subtitle
+from repo.subtitle import Subtitle
+import repo.config as CONFIG
 import pandas as pd
-import config as CONFIG
 import math
 import pickle
 from gensim.models.word2vec import Word2Vec

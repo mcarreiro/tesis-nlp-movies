@@ -1,9 +1,11 @@
-from subtitle import Subtitle
-from tokenizer import Tokenizer
+import sys
+sys.path.append('..')
+from repo.subtitle import Subtitle
+from repo.tokenizer import Tokenizer
+from repo import config as CONFIG
 import pickle
 import pandas as pd
 import os
-import config as CONFIG
 # import hunspell
 from textblob import TextBlob
 from textblob import Word

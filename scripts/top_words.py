@@ -1,5 +1,7 @@
+import sys
+sys.path.append('..')
+from repo import config as CONFIG
 import pandas as pd
-import config as CONFIG
 import pickle
 
 with open(CONFIG.datasets_path + "frequency_index.p", 'rb') as f:

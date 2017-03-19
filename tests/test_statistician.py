@@ -1,4 +1,6 @@
-from statistician import Statistician
+import sys
+sys.path.append('..')
+from repo.statistician import Statistician
 import fixture_statistician as Fixtures
 
 # Run with: $ py.test test_statistician.py
