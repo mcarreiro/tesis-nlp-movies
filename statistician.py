@@ -1,3 +1,5 @@
+import sys
+sys.path.append('..')
 from repo.subtitle import Subtitle
 import repo.config as CONFIG
 import pandas as pd
@@ -102,44 +104,46 @@ class Statistician(object):
     return None
 
 
-  def w2v_average_for(self, target_word, context_words, chart_format=False):
+  def w2v_average_for(self, target_word, context_words, chart_format=False, threshold=None):
     if not self.w2v_model:
       w2v_model_path = CONFIG.datasets_path + "GoogleNews-vectors-negative300.bin"
       self.w2v_model = Word2Vec.load_word2vec_format(w2v_model_path, binary=True)
     result = [{} for w in context_words]
 
     for year in range(1930,2016):
-      calc = self.yearly_w2v_for(target_word, context_words, year)
+      calc = self.yearly_w2v_for(target_word, context_words, year, threshold)
       for i in range(0,len(context_words)):
         result[i][year] = calc[i]
-
+    print("W2V_AVG: ", result)
     if chart_format:
       result = [self.format_for_chart(word) for word in result]
     return result
 
 
-  def chart_average_w2v_for(self, target_word, context_words, smoothing=0):
+  def chart_w2v_average_for(self, target_word, context_words, smoothing=0):
     w2v = self.w2v_average_for(target_word, context_words, chart_format=True)
 
     if smoothing > 0:
       w2v = [self.smoothed(arr,smoothing) for arr in w2v]
-
+    print("CHART FCT:", w2v)
     self.chart(w2v, context_words)
     return None
 
 
-  def w2v_threshold_for(self, target_word, context_words, threshold=0.3, chart_format=False):
-    if not self.w2v_model:
-      w2v_model_path = CONFIG.datasets_path + "GoogleNews-vectors-negative300.bin"
-      self.w2v_model = Word2Vec.load_word2vec_format(w2v_model_path, binary=True)
+  def w2v_threshold_for(self, target_word, context_words, threshold, chart_format=False):
+    return self.w2v_average_for(target_word, context_words, chart_format=chart_format, threshold=threshold)
 
-    for year in range(1930,2016):
-      calc = self.yearly_w2v_for(target_word, context_word, year)
-      result[year] = calc
 
-    if chart_format:
-      result = self.format_for_chart(result)
-    return result
+  def chart_w2v_threshold_for(self, target_word, context_words, threshold=0.193171, smoothing=0):
+    w2v = self.w2v_threshold_for(target_word, context_words, chart_format=True, threshold=threshold)
+
+    if smoothing > 0:
+      w2v = [self.smoothed(arr,smoothing) for arr in w2v]
+    print("CHART FCT:", w2v)
+
+    self.chart(w2v, context_words)
+    return None
+
 
   # Auxiliaries
 
@@ -214,7 +218,7 @@ class Statistician(object):
 
   def format_for_chart(self, hsh):
     sorted_tuples = [(k, hsh[k]) for k in sorted(hsh)]
-    sorted_tuples = [(k, Statistician.res_or_zero(hsh, k)) for k in range(int(sorted_tuples[0][0]), int(sorted_tuples[len(sorted_tuples)-1][0]))]
+    sorted_tuples = [(k, Statistician.res_or_zero(hsh, k)) for k in range(int(sorted_tuples[0][0]), int(sorted_tuples[len(sorted_tuples)-1][0]+1))]
     return sorted_tuples
 
   def smoothed(self, tuples, level):
@@ -240,6 +244,7 @@ class Statistician(object):
   def chart(self, data, labels):
     import matplotlib.pyplot as plt
     plt.style.use('ggplot')
+    print("IN CHART: ", data)
     start_year = min([ tup[0][0] for tup in data ])
     max_year = max([ tup[len(data) - 1][0] for tup in data ])
     year_range = range(start_year,max_year)
