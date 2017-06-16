@@ -1,10 +1,11 @@
 # -*- coding: utf-8 -*-
 import pysrt
 import gzip
-from repo import config as CONFIG
+import config as CONFIG
 from pysrt import SubRipTime
-from repo.tokenizer import Tokenizer
+from tokenizer import Tokenizer
 
+flatten = lambda l: [item for sublist in l for item in sublist]
 
 class Subtitle(object):
   """ Lee el archivo srt dado un número de pelicula y devuelve el texto y
@@ -64,6 +65,58 @@ class Subtitle(object):
 
 
   def context_for_every_sub(self, length=5):
+    """
+    Returns an array containing dicts: {target_sub: ['a','b'], context: ['c','d']}
+    This means every word in the target sub has as context all others in target and all in context.
+    """
+    tokenizer = Tokenizer()
+    result = []
+    delta = SubRipTime.from_ordinal(length * 1000) # (ordinal is milliseconds)
+
+    # print("GETTING CONTEXT")
+    active = None
+    window = []
+    for i, sub in enumerate(self.raw_sub):
+      # Invariant: window contains current sub + subs within reach going backwards
+      # I need to find if any subs forwards fit the window
+      # And delete those which fall out when advancing current
+      # `sub` is a SubRipItem
+      end_of_window = sub.end + delta
+      if len(window) == 0:
+        # Add current to window
+        window.append({'sub': sub, 'tokens': tokenizer.full_run(sub.text)})
+        active = 0
+      # Find if any after last in window now fall in range
+      j = i+1 + len(window)-(active+1)
+      while j < len(self.raw_sub):
+        next_fwd = self.raw_sub[j]
+        if next_fwd.start < end_of_window:
+          window.append({'sub': next_fwd, 'tokens': tokenizer.full_run(next_fwd.text)})
+          j = j+1
+        else:
+          break
+      # Append tokens in window to result
+      context = flatten([item['tokens'] for k,item in enumerate(window) if k != active])
+      result.append([window[active]['tokens'],context])
+
+      # Move active forward and remove previous subs falling out of range
+      if len(window)-1 > active:
+        current_sub = window[active]["sub"]
+        active = active+1
+        new_start = window[active]["sub"].start - delta
+        while window[0]["sub"] != current_sub:
+          if window[0]["sub"].end > new_start:
+            break
+          else:
+            window = window[1:]
+      else:
+        window = []
+        active = None
+    # print("CONTEXTS FOUND")
+    return result
+
+
+  def context_for_every_sub_OLD(self, length=5):
     """
     Returns an array containing dicts: {target_sub: ['a','b'], context: ['c','d']}
     This means every word in the target sub has as context all others in target and all in context.
