@@ -89,6 +89,7 @@ class Statistician(object):
     return result
 
 
+  # st.chart_pmi_for([["campaign","forces"],["campaign","forces"],["campaign","forces"]],[["america","american","americans"],["iraq","iraqi","iraqis"],["muslim","muslims","islam"]],smoothing=3)
   def chart_pmi_for(self, words1, words2, smoothing=0, alpha=1):
     if not isinstance(words1, list):
       words1 = [words1]
@@ -114,7 +115,7 @@ class Statistician(object):
       calc = self.yearly_w2v_for(target_word, context_words, year, threshold)
       for i in range(0,len(context_words)):
         result[i][year] = calc[i]
-    print("W2V_AVG: ", result)
+    # print("W2V_AVG: ", result)
     if chart_format:
       result = [self.format_for_chart(word) for word in result]
     return result
@@ -160,19 +161,25 @@ class Statistician(object):
     target_vector = normalize(np.array([self.w2v_model[target_word]]),axis=1)[0]
 
     context_word_indeces = [Statistician.res_or_none(reference,word) for word in context_words]
-    rows = [matrix.getrow(index) for index in context_word_indeces]
+    rows = [matrix.getrow(index) if index is not None else None for index in context_word_indeces]
     vectors = []
     for row in rows:
+      if row is None:
+        vectors.append(None)
+        continue
       row_vectors = []
       for index in row.indices:
         word = inv_reference[index]
         if word in self.w2v_model:
           row_vectors.append(self.w2v_model[word])
       vectors.append(row_vectors)
-    vectors = [normalize(row_vectors,axis=1) for row_vectors in vectors]
-    distances = [np.matmul(vector,np.transpose(target_vector)) for vector in vectors]
+    vectors = [normalize(row_vectors,axis=1) if row_vectors is not None else None for row_vectors in vectors]
+    distances = [np.matmul(vector,np.transpose(target_vector)) if vector is not None else None for vector in vectors]
     res = []
     for row in distances:
+      if row is None:
+        res.append(None)
+        continue
       if threshold:
           total = len(row)
           res.append(len([dist for dist in row if dist >= threshold]) / total)
