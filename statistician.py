@@ -36,6 +36,9 @@ class Statistician(object):
     mentions = self.index[word] # {1983: 3, 1990: 62, ...}
     result = {}
     for year, count in mentions.items():
+      # Hack
+      if int(year) == 2016:
+        continue
       # Mentions / word total
       if int(year) in self.count_per_year:
         result[year] = count / self.count_per_year[int(year)]
@@ -53,6 +56,7 @@ class Statistician(object):
     frequencies = [self.word_frequency_for(word, chart_format=True) for word in words]
     if smoothing > 0:
       frequencies = [self.smoothed(arr,smoothing) for arr in frequencies]
+    print(frequencies)
 
     self.chart(frequencies, words)
     return None
@@ -75,10 +79,10 @@ class Statistician(object):
 
 
   # Pointwise Mutual Information
-  def pmi_for(self, word1, word2, alpha=1, chart_format=False):
+  def pmi_for(self, words1, words2, alpha=1, chart_format=False):
     result = {}
     for year in range(1930,2016):
-      calc = self.yearly_pmi_for(word1, word2, year, alpha)
+      calc = self.yearly_pmi_for(words1, words2, year, alpha)
       result[year] = calc
 
     if chart_format:
@@ -89,19 +93,18 @@ class Statistician(object):
     return result
 
 
-  # st.chart_pmi_for([["campaign","forces"],["campaign","forces"],["campaign","forces"]],[["america","american","americans"],["iraq","iraqi","iraqis"],["muslim","muslims","islam"]],smoothing=3)
-  def chart_pmi_for(self, words1, words2, smoothing=0, alpha=1):
-    if not isinstance(words1, list):
-      words1 = [words1]
-    if not isinstance(words2, list):
-      words2 = [words2]
-    pairs = zip(words1,words2)
-    pmis = [self.pmi_for(w1, w2, chart_format=True) for w1,w2 in pairs]
+  # st.chart_pmi_for(["campaign","forces"],[["america","american","americans"],["iraq","iraqi","iraqis"],["muslim","muslims","islam"]],smoothing=3)
+  def chart_pmi_for(self, target_words, comparison_words, smoothing=0, alpha=1):
+    if not isinstance(target_words, list):
+      target_words = [target_words]
+    if not isinstance(comparison_words, list):
+      comparison_words = [comparison_words]
+    pmis = [self.pmi_for(target_words, ws, chart_format=True) for ws in comparison_words]
 
     if smoothing > 0:
       pmis = [self.smoothed(arr,smoothing) for arr in pmis]
 
-    self.chart(pmis, words2)
+    self.chart(pmis, comparison_words)
     return None
 
 
@@ -126,7 +129,7 @@ class Statistician(object):
 
     if smoothing > 0:
       w2v = [self.smoothed(arr,smoothing) for arr in w2v]
-    print("CHART FCT:", w2v)
+
     self.chart(w2v, context_words)
     return None
 
@@ -140,7 +143,6 @@ class Statistician(object):
 
     if smoothing > 0:
       w2v = [self.smoothed(arr,smoothing) for arr in w2v]
-    print("CHART FCT:", w2v)
 
     self.chart(w2v, context_words)
     return None
@@ -148,7 +150,7 @@ class Statistician(object):
 
   # Auxiliaries
 
-  def yearly_w2v_for(self, target_word, context_words, year, threshold=None):
+  def yearly_w2v_for(self, target_words, context_words, year, threshold=None):
     if not self.w2v_model:
       w2v_model_path = CONFIG.datasets_path + "GoogleNews-vectors-negative300.bin"
       self.w2v_model = Word2Vec.load_word2vec_format(w2v_model_path, binary=True)
@@ -225,7 +227,7 @@ class Statistician(object):
 
   def format_for_chart(self, hsh):
     sorted_tuples = [(k, hsh[k]) for k in sorted(hsh)]
-    sorted_tuples = [(k, Statistician.res_or_zero(hsh, k)) for k in range(int(sorted_tuples[0][0]), int(sorted_tuples[len(sorted_tuples)-1][0]+1))]
+    sorted_tuples = [(k, Statistician.res_or_none(hsh, k)) for k in range(1930, 2016)]
     return sorted_tuples
 
   def smoothed(self, tuples, level):
@@ -236,12 +238,14 @@ class Statistician(object):
       divisor = 1
       start = max(counter - level,0)
       for i in range(start,counter - 1):
-        full_sum += tuples[i][1]
-        divisor += 1
+        if tuples[i][1] is not None:
+          full_sum += tuples[i][1]
+          divisor += 1
       finish = min(counter + level,len(tuples) - 1)
       for i in range(counter + 1,finish):
-        full_sum += tuples[i][1]
-        divisor += 1
+        if tuples[i][1] is not None:
+          full_sum += tuples[i][1]
+          divisor += 1
 
       result.append((year, full_sum / divisor))
       counter += 1
@@ -251,10 +255,6 @@ class Statistician(object):
   def chart(self, data, labels):
     import matplotlib.pyplot as plt
     plt.style.use('ggplot')
-    print("IN CHART: ", data)
-    start_year = min([ tup[0][0] for tup in data ])
-    max_year = max([ tup[len(data) - 1][0] for tup in data ])
-    year_range = range(start_year,max_year)
 
     colormap = plt.cm.spectral
     total = len(data)
