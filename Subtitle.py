@@ -1,9 +1,9 @@
 # -*- coding: utf-8 -*-
 import pysrt
 import gzip
-import config as CONFIG
+import repo.config as CONFIG
 from pysrt import SubRipTime
-from tokenizer import Tokenizer
+from repo.tokenizer import Tokenizer
 
 flatten = lambda l: [item for sublist in l for item in sublist]
 
@@ -73,7 +73,6 @@ class Subtitle(object):
     result = []
     delta = SubRipTime.from_ordinal(length * 1000) # (ordinal is milliseconds)
 
-    # print("GETTING CONTEXT")
     active = None
     window = []
     for i, sub in enumerate(self.raw_sub):
@@ -81,17 +80,29 @@ class Subtitle(object):
       # I need to find if any subs forwards fit the window
       # And delete those which fall out when advancing current
       # `sub` is a SubRipItem
-      end_of_window = sub.end + delta
       if len(window) == 0:
-        # Add current to window
-        window.append({'sub': sub, 'tokens': tokenizer.full_run(sub.text)})
-        active = 0
+        active_subs_tokens = tokenizer.full_run(sub.text)
+        if len(active_subs_tokens) > 0:
+          # Add current to window
+          window.append({'sub': sub, 'tokens': active_subs_tokens, 'i': i})
+          active = 0
+        else:
+          # Subs with symbols, like music, or CAPS DESCRIPTIONS OF ACTION
+          continue
+      else:
+        if sub.text != window[active]["sub"].text:
+          # This sub has been ommitted from the window because it tokenizes to []
+          # So now the window and the iteration are not matching up, so we skip.
+          continue
       # Find if any after last in window now fall in range
-      j = i+1 + len(window)-(active+1)
+      end_of_window = sub.end + delta
+      j = window[len(window)-1]["i"] + 1 # if len(window) > 1 else i+1
       while j < len(self.raw_sub):
         next_fwd = self.raw_sub[j]
         if next_fwd.start < end_of_window:
-          window.append({'sub': next_fwd, 'tokens': tokenizer.full_run(next_fwd.text)})
+          tokens = tokenizer.full_run(next_fwd.text)
+          if len(tokens) > 0:
+            window.append({'sub': next_fwd, 'tokens': tokens, 'i': j})
           j = j+1
         else:
           break
@@ -109,10 +120,10 @@ class Subtitle(object):
             break
           else:
             window = window[1:]
+            active = active-1
       else:
         window = []
         active = None
-    # print("CONTEXTS FOUND")
     return result
 
 

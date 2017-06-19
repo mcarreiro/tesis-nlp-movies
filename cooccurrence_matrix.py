@@ -8,6 +8,7 @@ import pickle
 import os
 import math
 
+
 class CooccurrenceMatrix(object):
 
   def __init__(self, window_size):
@@ -26,47 +27,54 @@ class CooccurrenceMatrix(object):
       row, col, count = [],[],[]
       subId = str(int(entry.IDSubtitleFile))
       print(subId)
-      try:
-        sub = Subtitle(int(subId))
-        contexts = sub.context_for_every_sub(self.window_size)
-        # sub = [word1, word2], context = [word3, word4]
-        # print("ADDING TO ARRAYS")
-        for sub,context in contexts:
-          for word in sub:
-            # Get an index for this word in the matrix
-            if word in word_to_index:
-              i = word_to_index[word]
+      # try:
+      sub = Subtitle(int(subId))
+      print("Getting contexts")
+      contexts = sub.context_for_every_sub(self.window_size)
+      print("Contexts done")
+      # sub = [word1, word2], context = [word3, word4]
+      print("ADDING TO ARRAYS")
+      for sub,context in contexts:
+        for word in sub:
+          # Get an index for this word in the matrix
+          if word in word_to_index:
+            i = word_to_index[word]
+          else:
+            i = next_index
+            word_to_index[word] = i
+            next_index += 1
+
+          # Add each context for this word.
+          # There will be duplicates, but the matrix will handle them:
+          # https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.coo_matrix.html
+          for c in sub + context:
+            if c == word:
+              continue
+            # Get an index for the c word
+            if c in word_to_index:
+              c_i = word_to_index[c]
             else:
-              i = next_index
-              word_to_index[word] = i
+              c_i = next_index
+              word_to_index[c] = c_i
               next_index += 1
+            row.append(i)
+            col.append(c_i)
+            count.append(1)
+      print("Making single matrix")
+      single_film_matrix = coo_matrix((count, (row, col)))
+      # Testing out if converting to csr minimizes memory usage
+      single_film_matrix = single_film_matrix.tocsr()
+      if temp_matrix is not None:
+        print("Adding up to previous matrix")
+        # temp_matrix = temp_matrix + single_film_matrix
+        temp_matrix = CooccurrenceMatrix.sum_through_coo(temp_matrix,single_film_matrix)
+      else:
+        temp_matrix = single_film_matrix
+      # print("DONE")
+      # except:
+      #   print("ERROR")
 
-            # Add each context for this word.
-            # There will be duplicates, but the matrix will handle them:
-            # https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.coo_matrix.html
-            for c in sub + context:
-              if c == word:
-                continue
-              # Get an index for the c word
-              if c in word_to_index:
-                c_i = word_to_index[c]
-              else:
-                c_i = next_index
-                word_to_index[c] = c_i
-                next_index += 1
-              row.append(i)
-              col.append(c_i)
-              count.append(1)
-        single_film_matrix = coo_matrix((count, (row, col)))
-        if temp_matrix:
-          temp_matrix = CooccurrenceMatrix.sum_through_coo(temp_matrix,single_film_matrix)
-        else:
-          temp_matrix = single_film_matrix
-        # print("DONE")
-      except:
-        print("ERROR")
-
-    # print("FINAL MATRIX")
+    print("Converting to final matrix")
     matrix = temp_matrix.tocsr()
     # print("TRANSFORMING TO CSR")
     # m = matrix.tocsr()
@@ -77,10 +85,13 @@ class CooccurrenceMatrix(object):
 
   @staticmethod
   def sum_through_coo(matrix1, matrix2):
-    d = np.concatenate((matrix1.data, matrix2.data))
-    r = np.concatenate((matrix1.row, matrix2.row))
-    c = np.concatenate((matrix1.col, matrix2.col))
-    result = sparse.coo_matrix((d,(r,c)))
+    m = matrix1.tocoo()
+    n = matrix2.tocoo()
+    d = np.concatenate((m.data, n.data))
+    r = np.concatenate((m.row, n.row))
+    c = np.concatenate((m.col, n.col))
+    result = coo_matrix((d,(r,c)))
+    result = result.tocsr()
     return result
 
   @staticmethod
