@@ -49,14 +49,13 @@ class Statistician(object):
 
 
   def chart_frequency_for(self, words, smoothing=0):
-    """ Charts frequency for list of words chosen.
+    """ Charts frequency for list of words chosen. Each word separately.
         Smoothing (= n) parameter means result for 1 year (Y) equals (Y-N + .. + Y-1 + Y + Y+1 + .. + Y+N)/2N+1
     """
     import matplotlib.pyplot as plt
     frequencies = [self.word_frequency_for(word, chart_format=True) for word in words]
     if smoothing > 0:
       frequencies = [self.smoothed(arr,smoothing) for arr in frequencies]
-    print(frequencies)
 
     self.chart(frequencies, words)
     return None
@@ -108,29 +107,34 @@ class Statistician(object):
     return None
 
 
-  def w2v_average_for(self, target_word, context_words, chart_format=False, threshold=None):
+  def w2v_average_for(self, target_words, context_words, chart_format=False, threshold=None):
+    if len(target_words) > 1 and len(context_words) > 1:
+      raise("You can have multiple target words OR multiple context words. Not both")
     if not self.w2v_model:
       w2v_model_path = CONFIG.datasets_path + "GoogleNews-vectors-negative300.bin"
       self.w2v_model = Word2Vec.load_word2vec_format(w2v_model_path, binary=True)
-    result = [{} for w in context_words]
+
+    multiples = context_words if len(context_words)>1 else target_words
+    result = [{} for i in range(0,len(multiples))]
 
     for year in range(1930,2016):
-      calc = self.yearly_w2v_for(target_word, context_words, year, threshold)
-      for i in range(0,len(context_words)):
+      calc = self.yearly_w2v_for(target_words, context_words, year, threshold)
+      for i in range(0,len(multiples)):
         result[i][year] = calc[i]
-    # print("W2V_AVG: ", result)
+
     if chart_format:
       result = [self.format_for_chart(word) for word in result]
     return result
 
 
-  def chart_w2v_average_for(self, target_word, context_words, smoothing=0):
-    w2v = self.w2v_average_for(target_word, context_words, chart_format=True)
+  def chart_w2v_average_for(self, target_words, context_words, smoothing=0):
+    w2v = self.w2v_average_for(target_words, context_words, chart_format=True)
 
     if smoothing > 0:
       w2v = [self.smoothed(arr,smoothing) for arr in w2v]
 
-    self.chart(w2v, context_words)
+    multiples = context_words if len(context_words)>1 else target_words
+    self.chart(w2v, multiples)
     return None
 
 
@@ -144,13 +148,22 @@ class Statistician(object):
     if smoothing > 0:
       w2v = [self.smoothed(arr,smoothing) for arr in w2v]
 
-    self.chart(w2v, context_words)
+    multiples = context_words if len(context_words)>1 else target_words
+    self.chart(w2v, multiples)
     return None
 
 
   # Auxiliaries
 
   def yearly_w2v_for(self, target_words, context_words, year, threshold=None):
+    """ Returns an array of {1930: N, ..., 2015: M} for each pair of words. Each N is:
+      - if multiple context_words it's distance of the resulting vector of all contexts
+        of a context_word to the target vector (for that year)
+      - if multiple target_words it's distance of a target word to all
+        contexts of the single context_word (for that year)
+    This should NOT be used with both multiple target words and multiple context words.
+    Result will fail if you do.
+    """
     if not self.w2v_model:
       w2v_model_path = CONFIG.datasets_path + "GoogleNews-vectors-negative300.bin"
       self.w2v_model = Word2Vec.load_word2vec_format(w2v_model_path, binary=True)
@@ -160,7 +173,7 @@ class Statistician(object):
     with open(CONFIG.datasets_path + "cooccurrence_matrices/" + str(year) + "_reference.p", 'rb') as f:
       reference = pickle.load(f)
     inv_reference = {v: k for k, v in reference.items()}
-    target_vector = normalize(np.array([self.w2v_model[target_word]]),axis=1)[0]
+    target_vectors = normalize(np.array([self.w2v_model[target_word] for target_word in target_words]))
 
     context_word_indeces = [Statistician.res_or_none(reference,word) for word in context_words]
     rows = [matrix.getrow(index) if index is not None else None for index in context_word_indeces]
@@ -175,18 +188,24 @@ class Statistician(object):
         if word in self.w2v_model:
           row_vectors.append(self.w2v_model[word])
       vectors.append(row_vectors)
-    vectors = [normalize(row_vectors,axis=1) if row_vectors is not None else None for row_vectors in vectors]
-    distances = [np.matmul(vector,np.transpose(target_vector)) if vector is not None else None for vector in vectors]
+    context_vectors = [normalize(row_vectors,axis=1) if row_vectors is not None else None for row_vectors in vectors]
+    distances_per_target = {}
+    distances = []
+    for target_word,target_vector in zip(target_words, target_vectors):
+      d = [np.matmul(vector,np.transpose(target_vector)) if vector is not None else None for vector in context_vectors]
+      distances_per_target[target_word] = d
+      distances.append(d)
     res = []
     for row in distances:
-      if row is None:
-        res.append(None)
-        continue
-      if threshold:
-          total = len(row)
-          res.append(len([dist for dist in row if dist >= threshold]) / total)
-      else:
-        res.append(np.mean(row))
+      for target in row:
+        if target is None:
+          res.append(None)
+          continue
+        if threshold:
+            total = len(target)
+            res.append(len([dist for dist in target if dist >= threshold]) / total)
+        else:
+          res.append(np.mean(target))
     return res
 
 
@@ -226,11 +245,20 @@ class Statistician(object):
 
 
   def format_for_chart(self, hsh):
+    """
+    Receives a hash with years as keys.
+    Returns an array of tuples [(1930, N),(1931, M)...] for all years between 1930 and 2015.
+    Returns None for those without data in original hash.
+    """
     sorted_tuples = [(k, hsh[k]) for k in sorted(hsh)]
     sorted_tuples = [(k, Statistician.res_or_none(hsh, k)) for k in range(1930, 2016)]
     return sorted_tuples
 
   def smoothed(self, tuples, level):
+    """
+    Receives an array in format_for_chart format.
+    Returns a
+    """
     result = []
     counter = 0
     for year,count in tuples:
@@ -252,7 +280,7 @@ class Statistician(object):
     return result
 
 
-  def chart(self, data, labels):
+  def chart(self, data, labels, title="TÍTULO"):
     import matplotlib.pyplot as plt
     plt.style.use('ggplot')
 
@@ -268,7 +296,7 @@ class Statistician(object):
     plt.legend(loc='best')
     locs, labels = plt.xticks()
     plt.setp(labels, rotation=90)
-    # plt.title("PMI for " + ",".join(labels))
+    plt.title(title)
     plt.ylim(ymin=0)
     plt.show()
 

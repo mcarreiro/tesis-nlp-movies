@@ -1,4 +1,6 @@
 # -*- coding: utf-8 -*-
+import sys
+sys.path.append('..')
 import pysrt
 import gzip
 import repo.config as CONFIG
