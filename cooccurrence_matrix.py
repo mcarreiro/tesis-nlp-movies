@@ -1,3 +1,5 @@
+import sys
+sys.path.append('..')
 import numpy as np
 from scipy.sparse import coo_matrix
 from scipy.sparse import csr_matrix
@@ -31,6 +33,9 @@ class CooccurrenceMatrix(object):
       sub = Subtitle(int(subId))
       print("Getting contexts")
       contexts = sub.context_for_every_sub(self.window_size)
+      if len(contexts) == 0:
+        # Bizarre movie with 10 subs which are mostly empty/description in between brackets
+        continue
       print("Contexts done")
       # sub = [word1, word2], context = [word3, word4]
       print("ADDING TO ARRAYS")
@@ -96,9 +101,10 @@ class CooccurrenceMatrix(object):
 
   @staticmethod
   def save_to_file(matrix, word_to_index, year, window_size):
-    folder_path = CONFIG.datasets_path + "cooccurrence_matrices_" + window_size + "/"
-    with open(folder_path + str(year) + ".p", 'wb') as file:
-      pickle.dump(matrix, file, protocol=pickle.HIGHEST_PROTOCOL)
+    folder_path = CONFIG.datasets_path + "cooccurrence_matrices_" + str(window_size) + "/"
+    if not os.path.exists(folder_path):
+      os.makedirs(folder_path)
+    pickle_dump(matrix, folder_path + str(year) + ".p")
     with open(folder_path + str(year) + "_reference.p", 'wb') as file2:
       pickle.dump(word_to_index, file2, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -117,3 +123,45 @@ class CooccurrenceMatrix(object):
     for year in range(start,2016):
       print("HERE STARTS YEAR: ", year)
       gen.build(year)
+
+
+class MacOSFile(object):
+
+  def __init__(self, f):
+    self.f = f
+
+  def __getattr__(self, item):
+    return getattr(self.f, item)
+
+  # def read(self, n):
+  #     # print("reading total_bytes=%s" % n, flush=True)
+  #     if n >= (1 << 31):
+  #         buffer = bytearray(n)
+  #         idx = 0
+  #         while idx < n:
+  #             batch_size = min(n - idx, 1 << 31 - 1)
+  #             # print("reading bytes [%s,%s)..." % (idx, idx + batch_size), end="", flush=True)
+  #             buffer[idx:idx + batch_size] = self.f.read(batch_size)
+  #             # print("done.", flush=True)
+  #             idx += batch_size
+  #         return buffer
+  #     return self.f.read(n)
+
+  def write(self, buffer):
+    n = len(buffer)
+    print("writing total_bytes=%s..." % n, flush=True)
+    idx = 0
+    while idx < n:
+      batch_size = min(n - idx, 1 << 31 - 1)
+      print("writing bytes [%s, %s)... " % (idx, idx + batch_size), end="", flush=True)
+      self.f.write(buffer[idx:idx + batch_size])
+      print("done.", flush=True)
+      idx += batch_size
+
+def pickle_dump(obj, file_path):
+  with open(file_path, "wb") as f:
+    return pickle.dump(obj, MacOSFile(f), protocol=pickle.HIGHEST_PROTOCOL)
+
+# def pickle_load(file_path):
+#     with open(file_path, "rb") as f:
+#         return pickle.load(MacOSFile(f))
