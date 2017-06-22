@@ -262,20 +262,23 @@ class Statistician(object):
     result = []
     counter = 0
     for year,count in tuples:
-      full_sum = count
-      divisor = 1
-      start = max(counter - level,0)
-      for i in range(start,counter - 1):
-        if tuples[i][1] is not None:
-          full_sum += tuples[i][1]
-          divisor += 1
-      finish = min(counter + level,len(tuples) - 1)
-      for i in range(counter + 1,finish):
-        if tuples[i][1] is not None:
-          full_sum += tuples[i][1]
-          divisor += 1
-
-      result.append((year, full_sum / divisor))
+      if count is not None:
+        full_sum = count
+        divisor = 1
+        start = max(counter - level,0)
+        for i in range(start,counter - 1):
+          if tuples[i][1] is not None:
+            full_sum += tuples[i][1]
+            divisor += 1
+        finish = min(counter + level,len(tuples) - 1)
+        for i in range(counter + 1,finish):
+          if tuples[i][1] is not None:
+            full_sum += tuples[i][1]
+            divisor += 1
+        res = full_sum / divisor
+      else:
+        res = None
+      result.append((year, res))
       counter += 1
     return result
 
