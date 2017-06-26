@@ -12,19 +12,20 @@ import numpy as np
 
 class Statistician(object):
 
-  def __init__(self):
+  def __init__(self, window_size = 5):
     self.index = {}
     self.top_words = {}
     self.full_index = {}
     self.w2v_model = None
+    self.window_size = window_size
 
     with open(CONFIG.datasets_path + "word_count.p", 'rb') as f:
       self.count_per_year = pickle.load(f)
-    with open(CONFIG.datasets_path + "/cooccurrence_matrices/words_per_year.p", 'rb') as f:
+    with open(CONFIG.datasets_path + "cooccurrence_matrices_" + str(self.window_size) + "/words_per_year.p", 'rb') as f:
       self.words_per_year = pickle.load(f)
 
 
-  def word_frequency_for(self, word, chart_format=False):
+  def word_frequency_for(self, words, chart_format=False):
     """ Result is array of tuples from first year where #{word} was mentioned to last.
         Includes every year in between and the count is total mentions.
         [(1950, 78),(1951, 30),...]
@@ -32,23 +33,31 @@ class Statistician(object):
     if not self.index:
       with open(CONFIG.datasets_path + "frequency_index_2017.p", 'rb') as f:
         self.index = pickle.load(f)
-    Statistician.error_if_not([word], self.index)
-    mentions = self.index[word] # {1983: 3, 1990: 62, ...}
-    result = {}
-    for year, count in mentions.items():
-      # Hack
-      if int(year) == 2016:
-        continue
-      # Mentions / word total
-      if int(year) in self.count_per_year:
-        result[year] = count / self.count_per_year[int(year)]
+    if isinstance(words, str):
+      concept = [words]
+    else:
+      concept = words
+    Statistician.error_if_not(words, self.index)
+    # [{1983: 3, 1990: 62, ...},{},..]
+    mentions_of_each = [self.index[word] for word in concept]
+    totals = {}
+    for mentions in mentions_of_each:
+      for year, count in mentions.items():
+        # Hack
+        if int(year) == 2016:
+          continue
+        # Mentions / word total
+        if year not in totals:
+          totals[year] = count / self.count_per_year[int(year)]
+        else:
+          totals[year] += count / self.count_per_year[int(year)]
 
     if chart_format:
-      result = self.format_for_chart(result)
-    return result
+      totals = self.format_for_chart(totals)
+    return totals
 
 
-  def chart_frequency_for(self, words, smoothing=0):
+  def chart_frequency_for(self, words, smoothing=0, title="Título", save_to=None):
     """ Charts frequency for list of words chosen. Each word separately.
         Smoothing (= n) parameter means result for 1 year (Y) equals (Y-N + .. + Y-1 + Y + Y+1 + .. + Y+N)/2N+1
     """
@@ -57,7 +66,7 @@ class Statistician(object):
     if smoothing > 0:
       frequencies = [self.smoothed(arr,smoothing) for arr in frequencies]
 
-    self.chart(frequencies, words)
+    self.chart(frequencies, words, title=title, save_to=save_to)
     return None
 
 
@@ -78,10 +87,10 @@ class Statistician(object):
 
 
   # Pointwise Mutual Information
-  def pmi_for(self, words1, words2, alpha=1, chart_format=False):
+  def pmi_for(self, words1, words2, chart_format=False):
     result = {}
     for year in range(1930,2016):
-      calc = self.yearly_pmi_for(words1, words2, year, alpha)
+      calc = self.yearly_pmi_for(words1, words2, year)
       result[year] = calc
 
     if chart_format:
@@ -93,7 +102,7 @@ class Statistician(object):
 
 
   # st.chart_pmi_for(["campaign","forces"],[["america","american","americans"],["iraq","iraqi","iraqis"],["muslim","muslims","islam"]],smoothing=3)
-  def chart_pmi_for(self, target_words, comparison_words, smoothing=0, alpha=1):
+  def chart_pmi_for(self, target_words, comparison_words, smoothing=0, title="Título",save_to=None):
     if not isinstance(target_words, list):
       target_words = [target_words]
     if not isinstance(comparison_words, list):
@@ -103,7 +112,7 @@ class Statistician(object):
     if smoothing > 0:
       pmis = [self.smoothed(arr,smoothing) for arr in pmis]
 
-    self.chart(pmis, comparison_words)
+    self.chart(pmis, comparison_words, title=title, save_to=save_to)
     return None
 
 
@@ -117,7 +126,7 @@ class Statistician(object):
     multiples = context_words if len(context_words)>1 else target_words
     result = [{} for i in range(0,len(multiples))]
 
-    for year in range(1930,2016):
+    for year in range(1930,2000):
       calc = self.yearly_w2v_for(target_words, context_words, year, threshold)
       for i in range(0,len(multiples)):
         result[i][year] = calc[i]
@@ -127,14 +136,14 @@ class Statistician(object):
     return result
 
 
-  def chart_w2v_average_for(self, target_words, context_words, smoothing=0):
+  def chart_w2v_average_for(self, target_words, context_words, smoothing=0, title="Título", save_to=None):
     w2v = self.w2v_average_for(target_words, context_words, chart_format=True)
 
     if smoothing > 0:
       w2v = [self.smoothed(arr,smoothing) for arr in w2v]
 
     multiples = context_words if len(context_words)>1 else target_words
-    self.chart(w2v, multiples)
+    self.chart(w2v, multiples, title=title, save_to=save_to)
     return None
 
 
@@ -168,9 +177,9 @@ class Statistician(object):
       w2v_model_path = CONFIG.datasets_path + "GoogleNews-vectors-negative300.bin"
       self.w2v_model = Word2Vec.load_word2vec_format(w2v_model_path, binary=True)
     # Matrices are in CSR format
-    with open(CONFIG.datasets_path + "cooccurrence_matrices/" + str(year) + ".p", 'rb') as f:
+    with open(CONFIG.datasets_path + "cooccurrence_matrices_" + str(self.window_size) + "/" + str(year) + ".p", 'rb') as f:
       matrix = pickle.load(f)
-    with open(CONFIG.datasets_path + "cooccurrence_matrices/" + str(year) + "_reference.p", 'rb') as f:
+    with open(CONFIG.datasets_path + "cooccurrence_matrices_" + str(self.window_size) + "/" + str(year) + "_reference.p", 'rb') as f:
       reference = pickle.load(f)
     inv_reference = {v: k for k, v in reference.items()}
     target_vectors = normalize(np.array([self.w2v_model[target_word] for target_word in target_words]))
@@ -209,10 +218,10 @@ class Statistician(object):
     return res
 
 
-  def yearly_pmi_for(self, target_words, context_words, year, alpha=1):
-    with open(CONFIG.datasets_path + "cooccurrence_matrices/" + str(year) + ".p", 'rb') as f:
+  def yearly_pmi_for(self, target_words, context_words, year):
+    with open(CONFIG.datasets_path + "cooccurrence_matrices_" + str(self.window_size) + "/" + str(year) + ".p", 'rb') as f:
       matrix = pickle.load(f)
-    with open(CONFIG.datasets_path + "cooccurrence_matrices/" + str(year) + "_reference.p", 'rb') as f:
+    with open(CONFIG.datasets_path + "cooccurrence_matrices_" + str(self.window_size) + "/" + str(year) + "_reference.p", 'rb') as f:
       reference = pickle.load(f)
 
     if not isinstance(target_words, list):
@@ -236,7 +245,7 @@ class Statistician(object):
     if joint_appearences == 0:
       pmi = 0
     else:
-      calc = math.log((joint_appearences / n) / ((first_row / n) * (second_row**alpha / n**alpha)),2)
+      calc = math.log((joint_appearences / n) / ((first_row / n) * (second_row / n)),2)
       if calc < 0:
         pmi = 0
       else:
@@ -283,8 +292,9 @@ class Statistician(object):
     return result
 
 
-  def chart(self, data, labels, title="TÍTULO"):
+  def chart(self, data, labels, title="TÍTULO", save_to=None):
     import matplotlib.pyplot as plt
+    plt.gcf().clear()
     plt.style.use('ggplot')
 
     colormap = plt.cm.spectral
@@ -301,7 +311,10 @@ class Statistician(object):
     plt.setp(labels, rotation=90)
     plt.title(title)
     plt.ylim(ymin=0)
-    plt.show()
+    if save_to is None:
+      plt.show()
+    else:
+      plt.savefig(save_to)
 
 
   def squash_years_into(self, result, years=5):

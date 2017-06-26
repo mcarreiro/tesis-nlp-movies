@@ -47,7 +47,7 @@ class Subtitle(object):
     context = []
     if sub:
       sub = sub[0]
-      delta = SubRipTime.from_ordinal(length * 1000) # (ordinal is milliseconds)
+      delta = SubRipTime.from_ordinal(int(length) * 1000) # (ordinal is milliseconds)
       start = sub.start - delta
       end = sub.end + delta
       subs = self.raw_sub.slice(ends_after=start, starts_before=end)
@@ -73,7 +73,7 @@ class Subtitle(object):
     """
     tokenizer = Tokenizer()
     result = []
-    delta = SubRipTime.from_ordinal(length * 1000) # (ordinal is milliseconds)
+    delta = SubRipTime.from_ordinal(int(length) * 1000) # (ordinal is milliseconds)
 
     active = None
     window = []
