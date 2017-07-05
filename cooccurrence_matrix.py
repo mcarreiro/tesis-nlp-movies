@@ -23,7 +23,7 @@ class CooccurrenceMatrix(object):
     print("START BUILD OF YEAR ", year)
     word_to_index = {}
     next_index = 0
-    year_subs = self.subs[self.subs.MovieYear == year][["IDSubtitleFile", "MovieYear"]]
+    year_subs = self.subs[self.subs.MovieYear == year][["IDSubtitleFile", "MovieYear","MovieName"]]
     temp_matrix = None
     for entry in year_subs.itertuples():
       try:
@@ -70,6 +70,7 @@ class CooccurrenceMatrix(object):
           continue
         single_film_matrix = coo_matrix((count, (row, col)))
         single_film_matrix = single_film_matrix.tocsr()
+        # CooccurrenceMatrix.save_partial(single_film_matrix, entry.MovieName, entry.IDSubtitleFile)
         if temp_matrix is not None:
           print("Adding up to previous matrix")
           temp_matrix = CooccurrenceMatrix.sum_through_coo(temp_matrix,single_film_matrix)
@@ -93,6 +94,13 @@ class CooccurrenceMatrix(object):
     result = coo_matrix((d,(r,c)))
     result = result.tocsr()
     return result
+
+  @staticmethod
+  def save_partial(matrix, movie_name, movie_id):
+    folder_path = CONFIG.datasets_path + "partials_2011/"
+    if not os.path.exists(folder_path):
+      os.makedirs(folder_path)
+    pickle_dump(matrix, folder_path + str(movie_id) + "-" + str(movie_name) + ".p")
 
   @staticmethod
   def save_to_file(matrix, word_to_index, year, window_size):

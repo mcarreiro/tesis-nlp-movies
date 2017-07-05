@@ -239,10 +239,11 @@ class Statistician(object):
     for row in indeces1:
       for col in indeces2:
         joint_appearences += matrix[row,col]
-
     first_row = sum(map(lambda index: matrix.getrow(index).sum(), indeces1))
     second_row = sum(map(lambda index: matrix.getrow(index).sum(), indeces2))
-    if joint_appearences == 0:
+    if not first_row or not second_row:
+      pmi = None
+    elif joint_appearences == 0:
       pmi = 0
     else:
       calc = math.log((joint_appearences / n) / ((first_row / n) * (second_row / n)),2)
@@ -266,7 +267,8 @@ class Statistician(object):
   def smoothed(self, tuples, level):
     """
     Receives an array in format_for_chart format.
-    Returns a
+    Returns the same format but it averages between the level years forward and back
+    (if those years around have data)
     """
     result = []
     counter = 0
@@ -275,12 +277,12 @@ class Statistician(object):
         full_sum = count
         divisor = 1
         start = max(counter - level,0)
-        for i in range(start,counter - 1):
+        for i in range(start,counter):
           if tuples[i][1] is not None:
             full_sum += tuples[i][1]
             divisor += 1
         finish = min(counter + level,len(tuples) - 1)
-        for i in range(counter + 1,finish):
+        for i in range(counter + 1,finish+1):
           if tuples[i][1] is not None:
             full_sum += tuples[i][1]
             divisor += 1
@@ -296,14 +298,15 @@ class Statistician(object):
     import matplotlib.pyplot as plt
     plt.gcf().clear()
     plt.style.use('ggplot')
-
+    plt.figure(figsize=(14,7))
+    print("CHART: ", data)
     colormap = plt.cm.spectral
     total = len(data)
     i = 1
     for series,words in zip(data,labels):
-      c = colormap(i/10.,1)
-      i += 1
-      plt.plot(range(len(series)), [v for k,v in series], label=words, color=c)
+      # c = colormap(i/10.,1)
+      # i += 1
+      plt.plot(range(len(series)), [v for k,v in series], label=words, marker='.')
 
     plt.xticks(range(len(data[0])), [k for k,v in data[0]])
     plt.legend(loc='best')
@@ -314,7 +317,7 @@ class Statistician(object):
     if save_to is None:
       plt.show()
     else:
-      plt.savefig(save_to)
+      plt.savefig(save_to, dpi=199)
 
 
   def squash_years_into(self, result, years=5):
