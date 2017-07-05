@@ -27,10 +27,14 @@ class Tokenizer(object):
 
   def filter_stopwords(self, list_of_tokens):
     # Remove stopwords according to NLTK's stopword list
-    # I'm going to retain he and she for the time being
+    # I'm going to retain he, him, his and she, her, hers
     words_for_removal = list(stopwords.words('english'))
     words_for_removal.remove('he')
     words_for_removal.remove('she')
+    words_for_removal.remove('her')
+    words_for_removal.remove('hers')
+    words_for_removal.remove('him')
+    words_for_removal.remove('his')
     return [word for word in list_of_tokens if word not in words_for_removal]
 
   def lemmatize(self, list_of_tokens):
