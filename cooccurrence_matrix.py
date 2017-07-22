@@ -127,6 +127,7 @@ class CooccurrenceMatrix(object):
     for year in range(start,2016):
       print("HERE STARTS YEAR: ", year)
       gen.build(year)
+    gen.build_year_sums()
 
 
   def build_year_sums(self):

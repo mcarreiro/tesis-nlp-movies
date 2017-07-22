@@ -8,6 +8,7 @@ import pickle
 from gensim.models.word2vec import Word2Vec
 from sklearn.preprocessing import normalize
 import numpy as np
+import scipy.stats as ss
 
 
 class Statistician(object):
@@ -86,7 +87,7 @@ class Statistician(object):
     return [ word for word in self.top_words[str(year)] if prevalence[word] < tolerance * (2014-1930) ]
 
 
-  # Pointwise Mutual Information
+  # Positive Pointwise Mutual Information
   def pmi_for(self, words1, words2, chart_format=False):
     result = {}
     for year in range(1930,2016):
@@ -102,65 +103,92 @@ class Statistician(object):
 
 
   # st.chart_pmi_for(["campaign","forces"],[["america","american","americans"],["iraq","iraqi","iraqis"],["muslim","muslims","islam"]],smoothing=3)
-  def chart_pmi_for(self, target_words, comparison_words, smoothing=0, title="Título",save_to=None):
+  def chart_pmi_for(self, target_words, comparison_words, smoothing=0, title="Título",save_to=None, highlights=[]):
     if not isinstance(target_words, list):
       target_words = [target_words]
     if not isinstance(comparison_words, list):
       comparison_words = [comparison_words]
     pmis = [self.pmi_for(target_words, ws, chart_format=True) for ws in comparison_words]
-
+    print("PMIS: ", pmis)
     if smoothing > 0:
       pmis = [self.smoothed(arr,smoothing) for arr in pmis]
 
-    self.chart(pmis, comparison_words, title=title, save_to=save_to)
+    self.chart(pmis, comparison_words, title=title, save_to=save_to, vertical_markers=highlights)
     return None
 
-
+  # Word to vec: distance of average of all context vectors to target vector
+  # OR distance of all contexts of a single concept to all target vectors
   def w2v_average_for(self, target_words, context_words, chart_format=False, threshold=None):
-    if len(target_words) > 1 and len(context_words) > 1:
-      raise("You can have multiple target words OR multiple context words. Not both")
-    if not self.w2v_model:
-      w2v_model_path = CONFIG.datasets_path + "GoogleNews-vectors-negative300.bin"
-      self.w2v_model = Word2Vec.load_word2vec_format(w2v_model_path, binary=True)
-
-    multiples = context_words if len(context_words)>1 else target_words
+    if (not isinstance(target_words,str) and len(target_words) > 1) and len(context_words) > 1:
+      print("You can have multiple target words OR multiple context words. Not both")
+      return
+    multiples = context_words if not isinstance(context_words,str) and len(context_words)>1 else target_words
     result = [{} for i in range(0,len(multiples))]
-
-    for year in range(1930,2000):
+    print("MULTIPLES: ", multiples)
+    for year in range(1930,2016):
       calc = self.yearly_w2v_for(target_words, context_words, year, threshold)
       for i in range(0,len(multiples)):
         result[i][year] = calc[i]
-
+    print("RESULT FULL: ", result)
     if chart_format:
       result = [self.format_for_chart(word) for word in result]
     return result
 
 
-  def chart_w2v_average_for(self, target_words, context_words, smoothing=0, title="Título", save_to=None):
+  def chart_w2v_average_for(self, target_words, context_words, smoothing=0, title="Título", save_to=None, highlights=[]):
     w2v = self.w2v_average_for(target_words, context_words, chart_format=True)
 
     if smoothing > 0:
       w2v = [self.smoothed(arr,smoothing) for arr in w2v]
 
     multiples = context_words if len(context_words)>1 else target_words
-    self.chart(w2v, multiples, title=title, save_to=save_to)
+    self.chart(w2v, multiples, title=title, save_to=save_to, vertical_markers=highlights)
     return None
 
 
+  # Word to vec: ratio of words in all contexts closer to target vector according to threshold.
   def w2v_threshold_for(self, target_word, context_words, threshold, chart_format=False):
     return self.w2v_average_for(target_word, context_words, chart_format=chart_format, threshold=threshold)
 
 
-  def chart_w2v_threshold_for(self, target_word, context_words, threshold=0.193171, smoothing=0):
+  def chart_w2v_threshold_for(self, target_word, context_words, threshold=0.193171, smoothing=0, title="Título", save_to=None, highlights=[]):
     w2v = self.w2v_threshold_for(target_word, context_words, chart_format=True, threshold=threshold)
 
     if smoothing > 0:
       w2v = [self.smoothed(arr,smoothing) for arr in w2v]
 
     multiples = context_words if len(context_words)>1 else target_words
-    self.chart(w2v, multiples)
+    self.chart(w2v, multiples, title=title, save_to=save_to, vertical_markers=highlights)
     return None
 
+
+  def hypergeo_for(self, target_words, context_words, chart_format=False):
+    result = {}
+    for year in range(1930,2016):
+      calc = self.yearly_hypergeo_for(target_words, context_words, year)
+      result[year] = calc
+
+    if chart_format:
+      result = self.format_for_chart(result)
+    return result
+
+
+  def chart_hypergeo_for(self, target_words, comparison_words, smoothing=0, title="Titulo", save_to=None, highlights=[]):
+    if not isinstance(target_words, list):
+      target_words = [target_words]
+    if not isinstance(comparison_words, list):
+      comparison_words = [comparison_words]
+    res = [self.hypergeo_for(target_words, ws, chart_format=True) for ws in comparison_words]
+
+    if smoothing > 0:
+      res = [self.smoothed(arr,smoothing) for arr in res]
+
+    if not highlights:
+      markers = [0.95]
+    else:
+      markers = highlights
+    self.chart(res, comparison_words, title=title, save_to=save_to, horizontal_markers=markers)
+    return None
 
   # Auxiliaries
 
@@ -177,25 +205,29 @@ class Statistician(object):
       w2v_model_path = CONFIG.datasets_path + "GoogleNews-vectors-negative300.bin"
       self.w2v_model = Word2Vec.load_word2vec_format(w2v_model_path, binary=True)
     # Matrices are in CSR format
-    with open(CONFIG.datasets_path + "cooccurrence_matrices_" + str(self.window_size) + "/" + str(year) + ".p", 'rb') as f:
-      matrix = pickle.load(f)
-    with open(CONFIG.datasets_path + "cooccurrence_matrices_" + str(self.window_size) + "/" + str(year) + "_reference.p", 'rb') as f:
-      reference = pickle.load(f)
+    matrix, reference = self.load_matrix_for(year)
+    target_words, context_words = self.listize(target_words, context_words)
     inv_reference = {v: k for k, v in reference.items()}
-    target_vectors = normalize(np.array([self.w2v_model[target_word] for target_word in target_words]))
+    target_vectors = normalize(np.array([self.w2v_model[target_word] for target_word in target_words if target_word in self.w2v_model]))
 
-    context_word_indeces = [Statistician.res_or_none(reference,word) for word in context_words]
-    rows = [matrix.getrow(index) if index is not None else None for index in context_word_indeces]
+    if isinstance(context_words[0],str):
+      context_word_indeces = [[Statistician.res_or_none(reference,word) for word in context_words]]
+    else:
+      context_word_indeces = [[Statistician.res_or_none(reference,word) for word in concept] for concept in context_words]
+    rows = [[matrix.getrow(index) if index is not None else None for index in concept_indeces] for concept_indeces in context_word_indeces]
+    rows = [[v for v in concept if v is not None] for concept in rows]
+    rows = [l if len(l) > 0 else None for l in rows]
     vectors = []
     for row in rows:
       if row is None:
         vectors.append(None)
         continue
       row_vectors = []
-      for index in row.indices:
-        word = inv_reference[index]
-        if word in self.w2v_model:
-          row_vectors.append(self.w2v_model[word])
+      for word_row in row:
+        for index in word_row.indices:
+          word = inv_reference[index]
+          if word in self.w2v_model:
+            row_vectors.append(self.w2v_model[word])
       vectors.append(row_vectors)
     context_vectors = [normalize(row_vectors,axis=1) if row_vectors is not None else None for row_vectors in vectors]
     distances_per_target = {}
@@ -219,20 +251,8 @@ class Statistician(object):
 
 
   def yearly_pmi_for(self, target_words, context_words, year):
-    with open(CONFIG.datasets_path + "cooccurrence_matrices_" + str(self.window_size) + "/" + str(year) + ".p", 'rb') as f:
-      matrix = pickle.load(f)
-    with open(CONFIG.datasets_path + "cooccurrence_matrices_" + str(self.window_size) + "/" + str(year) + "_reference.p", 'rb') as f:
-      reference = pickle.load(f)
-
-    if not isinstance(target_words, list):
-      target_words = [target_words]
-    if not isinstance(context_words, list):
-      context_words = [context_words]
-
-    indeces1 = map(lambda concept: Statistician.res_or_none(reference,concept), target_words)
-    indeces1 = [i for i in indeces1 if i is not None]
-    indeces2 = map(lambda concept: Statistician.res_or_none(reference,concept), context_words)
-    indeces2 = [i for i in indeces2 if i is not None]
+    matrix, reference = self.load_matrix_for(year)
+    indeces1, indeces2 = self.indeces(target_words, context_words, reference)
 
     n = self.words_per_year[year]
     joint_appearences = 0
@@ -254,6 +274,24 @@ class Statistician(object):
     return {"pmi": pmi, "joint": joint_appearences, "first": first_row, "second": second_row, "n": n}
 
 
+  def yearly_hypergeo_for(self, target_words, context_words, year):
+    matrix, reference = self.load_matrix_for(year)
+    indeces1, indeces2 = self.indeces(target_words, context_words, reference)
+
+    all_contexts = self.words_per_year[year]
+    context_intersection = 0
+    for row in indeces1:
+      for col in indeces2:
+        context_intersection += matrix[row,col]
+    sum_for_target_words = sum(map(lambda index: matrix.getrow(index).sum(), indeces1))
+    sum_for_context_words = sum(map(lambda index: matrix.getrow(index).sum(), indeces2))
+    if not sum_for_target_words or not sum_for_context_words:
+      res = None
+    else:
+      res = ss.hypergeom.cdf(context_intersection, all_contexts, sum_for_target_words, sum_for_context_words)
+    return res
+
+
   def format_for_chart(self, hsh):
     """
     Receives a hash with years as keys.
@@ -263,6 +301,31 @@ class Statistician(object):
     sorted_tuples = [(k, hsh[k]) for k in sorted(hsh)]
     sorted_tuples = [(k, Statistician.res_or_none(hsh, k)) for k in range(1930, 2016)]
     return sorted_tuples
+
+  def load_matrix_for(self, year):
+    with open(CONFIG.datasets_path + "cooccurrence_matrices_" + str(self.window_size) + "/" + str(year) + ".p", 'rb') as f:
+      matrix = pickle.load(f)
+    with open(CONFIG.datasets_path + "cooccurrence_matrices_" + str(self.window_size) + "/" + str(year) + "_reference.p", 'rb') as f:
+      reference = pickle.load(f)
+    return [matrix, reference]
+
+  def indeces(self, words1, words2, reference):
+    words1, words2 = self.listize(words1,words2)
+
+    indeces1 = map(lambda concept: Statistician.res_or_none(reference,concept), words1)
+    indeces1 = [i for i in indeces1 if i is not None]
+    indeces2 = map(lambda concept: Statistician.res_or_none(reference,concept), words2)
+    indeces2 = [i for i in indeces2 if i is not None]
+    return [indeces1, indeces2]
+
+
+  def listize(self, words1, words2):
+    if not isinstance(words1, list):
+      words1 = [words1]
+    if not isinstance(words2, list):
+      words2 = [words2]
+    return [words1, words2]
+
 
   def smoothed(self, tuples, level):
     """
@@ -294,21 +357,20 @@ class Statistician(object):
     return result
 
 
-  def chart(self, data, labels, title="TÍTULO", save_to=None):
+  def chart(self, data, labels, title="TÍTULO", save_to=None, horizontal_markers=[], vertical_markers=[]):
     import matplotlib.pyplot as plt
-    plt.gcf().clear()
     plt.style.use('ggplot')
-    plt.figure(figsize=(14,7))
-    print("CHART: ", data)
-    colormap = plt.cm.spectral
-    total = len(data)
-    i = 1
-    for series,words in zip(data,labels):
-      # c = colormap(i/10.,1)
-      # i += 1
-      plt.plot(range(len(series)), [v for k,v in series], label=words, marker='.')
+    fig = plt.figure(figsize=(14,7))
+    ax = fig.add_subplot(111)
 
-    plt.xticks(range(len(data[0])), [k for k,v in data[0]])
+    for series,words in zip(data,labels):
+      ax.plot([k for k,v in series], [v for k,v in series], label=words, marker='.')
+
+    for marker in horizontal_markers:
+      ax.axhline(y=marker,color='black',ls='--')
+    for marker in vertical_markers:
+      ax.axvline(x=marker,color='black',ls='--')
+    plt.locator_params(axis='x', nbins=85)
     plt.legend(loc='best')
     locs, labels = plt.xticks()
     plt.setp(labels, rotation=90)
@@ -318,6 +380,7 @@ class Statistician(object):
       plt.show()
     else:
       plt.savefig(save_to, dpi=199)
+    plt.close()
 
 
   def squash_years_into(self, result, years=5):
