@@ -109,7 +109,6 @@ class Statistician(object):
     if not isinstance(comparison_words, list):
       comparison_words = [comparison_words]
     pmis = [self.pmi_for(target_words, ws, chart_format=True) for ws in comparison_words]
-    print("PMIS: ", pmis)
     if smoothing > 0:
       pmis = [self.smoothed(arr,smoothing) for arr in pmis]
 
@@ -119,17 +118,24 @@ class Statistician(object):
   # Word to vec: distance of average of all context vectors to target vector
   # OR distance of all contexts of a single concept to all target vectors
   def w2v_average_for(self, target_words, context_words, chart_format=False, threshold=None):
-    if (not isinstance(target_words,str) and len(target_words) > 1) and len(context_words) > 1:
+    if (not isinstance(target_words,str) and len(target_words) > 1) and (len(context_words) > 1 and isinstance(context_words[0],list)):
       print("You can have multiple target words OR multiple context words. Not both")
       return
-    multiples = context_words if not isinstance(context_words,str) and len(context_words)>1 else target_words
+    if not self.w2v_model:
+      w2v_model_path = CONFIG.datasets_path + "GoogleNews-vectors-negative300.bin"
+      self.w2v_model = Word2Vec.load_word2vec_format(w2v_model_path, binary=True)
+    if isinstance(target_words,list) and any([(target_word not in self.w2v_model) for target_word in target_words]):
+      for target_word in target_words:
+        if target_word not in self.w2v_model:
+          print(target_word, "is not in the w2v model")
+      return
+    multiples = target_words if not isinstance(target_words,str) and len(target_words)>1 else context_words
     result = [{} for i in range(0,len(multiples))]
-    print("MULTIPLES: ", multiples)
+
     for year in range(1930,2016):
       calc = self.yearly_w2v_for(target_words, context_words, year, threshold)
       for i in range(0,len(multiples)):
         result[i][year] = calc[i]
-    print("RESULT FULL: ", result)
     if chart_format:
       result = [self.format_for_chart(word) for word in result]
     return result
@@ -141,7 +147,7 @@ class Statistician(object):
     if smoothing > 0:
       w2v = [self.smoothed(arr,smoothing) for arr in w2v]
 
-    multiples = context_words if len(context_words)>1 else target_words
+    multiples = target_words if not isinstance(target_words,str) and len(target_words)>1 else context_words
     self.chart(w2v, multiples, title=title, save_to=save_to, vertical_markers=highlights)
     return None
 
@@ -151,13 +157,13 @@ class Statistician(object):
     return self.w2v_average_for(target_word, context_words, chart_format=chart_format, threshold=threshold)
 
 
-  def chart_w2v_threshold_for(self, target_word, context_words, threshold=0.193171, smoothing=0, title="Título", save_to=None, highlights=[]):
-    w2v = self.w2v_threshold_for(target_word, context_words, chart_format=True, threshold=threshold)
+  def chart_w2v_threshold_for(self, target_words, context_words, threshold=0.193171, smoothing=0, title="Título", save_to=None, highlights=[]):
+    w2v = self.w2v_threshold_for(target_words, context_words, chart_format=True, threshold=threshold)
 
     if smoothing > 0:
       w2v = [self.smoothed(arr,smoothing) for arr in w2v]
 
-    multiples = context_words if len(context_words)>1 else target_words
+    multiples = target_words if not isinstance(target_words,str) and len(target_words)>1 else context_words
     self.chart(w2v, multiples, title=title, save_to=save_to, vertical_markers=highlights)
     return None
 
@@ -208,7 +214,7 @@ class Statistician(object):
     matrix, reference = self.load_matrix_for(year)
     target_words, context_words = self.listize(target_words, context_words)
     inv_reference = {v: k for k, v in reference.items()}
-    target_vectors = normalize(np.array([self.w2v_model[target_word] for target_word in target_words if target_word in self.w2v_model]))
+    target_vectors = normalize(np.array([self.w2v_model[target_word] for target_word in target_words]))
 
     if isinstance(context_words[0],str):
       context_word_indeces = [[Statistician.res_or_none(reference,word) for word in context_words]]
@@ -229,6 +235,7 @@ class Statistician(object):
           if word in self.w2v_model:
             row_vectors.append(self.w2v_model[word])
       vectors.append(row_vectors)
+
     context_vectors = [normalize(row_vectors,axis=1) if row_vectors is not None else None for row_vectors in vectors]
     distances_per_target = {}
     distances = []
