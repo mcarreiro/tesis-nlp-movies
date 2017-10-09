@@ -19,7 +19,7 @@ class CooccurrenceMatrix(object):
     self.window_size = int(window_size)
 
 
-  def build(self, year):
+  def build(self, year, save_each_movie=False):
     print("START BUILD OF YEAR ", year)
     word_to_index = {}
     next_index = 0
@@ -31,14 +31,11 @@ class CooccurrenceMatrix(object):
         subId = str(int(entry.IDSubtitleFile))
         print(subId)
         sub = Subtitle(int(subId))
-        print("Getting contexts")
         contexts = sub.context_for_every_sub(self.window_size)
         if len(contexts) == 0:
           # Bizarre movie with 10 subs which are mostly empty/description in between brackets
           continue
-        print("Contexts done")
         # sub = [word1, word2], context = [word3, word4]
-        print("ADDING TO ARRAYS")
         for sub,context in contexts:
           for word in sub:
             # Get an index for this word in the matrix
@@ -65,23 +62,27 @@ class CooccurrenceMatrix(object):
               row.append(i)
               col.append(c_i)
               count.append(1)
-        print("Making single matrix")
+        # print("Making single matrix")
         if len(row) == 0 or len(col) == 0:
           continue
         single_film_matrix = coo_matrix((count, (row, col)))
         single_film_matrix = single_film_matrix.tocsr()
-        # CooccurrenceMatrix.save_partial(single_film_matrix, entry.MovieName, entry.IDSubtitleFile)
-        if temp_matrix is not None:
-          print("Adding up to previous matrix")
-          temp_matrix = CooccurrenceMatrix.sum_through_coo(temp_matrix,single_film_matrix)
+        if save_each_movie:
+          print("Saving " + entry.MovieName)
+          CooccurrenceMatrix.save_partial(single_film_matrix, entry.MovieName, entry.IDSubtitleFile, year)
         else:
-          temp_matrix = single_film_matrix
+          if temp_matrix is not None:
+            print("Adding up to previous matrix")
+            temp_matrix = CooccurrenceMatrix.sum_through_coo(temp_matrix,single_film_matrix)
+          else:
+            temp_matrix = single_film_matrix
       except FileNotFoundError:
         print("ERROR")
-
-    matrix = temp_matrix.tocsr()
-    CooccurrenceMatrix.save_to_file(matrix, word_to_index, year, self.window_size)
-    [word_to_index, matrix]
+    if not save_each_movie:
+      print("Saving full year matrix")
+      matrix = temp_matrix.tocsr()
+      CooccurrenceMatrix.save_to_file(matrix, word_to_index, year, self.window_size)
+      [word_to_index, matrix]
 
 
   @staticmethod
@@ -96,11 +97,11 @@ class CooccurrenceMatrix(object):
     return result
 
   @staticmethod
-  def save_partial(matrix, movie_name, movie_id):
-    folder_path = CONFIG.datasets_path + "partials_2011/"
+  def save_partial(matrix, movie_name, movie_id, year):
+    folder_path = CONFIG.datasets_path + "partials/" + str(year) + "/"
     if not os.path.exists(folder_path):
       os.makedirs(folder_path)
-    pickle_dump(matrix, folder_path + str(movie_id) + "-" + str(movie_name) + ".p")
+    pickle_dump(matrix, folder_path + str(int(movie_id)) + "-" + str(movie_name) + ".p")
 
   @staticmethod
   def save_to_file(matrix, word_to_index, year, window_size):

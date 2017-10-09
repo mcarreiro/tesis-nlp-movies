@@ -1,5 +1,6 @@
 import sys
 sys.path.append('..')
+import os
 from repo.subtitle import Subtitle
 import repo.config as CONFIG
 import pandas as pd
@@ -26,7 +27,7 @@ class Statistician(object):
       self.words_per_year = pickle.load(f)
 
 
-  def word_frequency_for(self, words, chart_format=False):
+  def word_frequency_for(self, words, chart_format=False, no_errors=False):
     """ Result is array of tuples from first year where #{word} was mentioned to last.
         Includes every year in between and the count is total mentions.
         [(1950, 78),(1951, 30),...]
@@ -38,9 +39,23 @@ class Statistician(object):
       concept = [words]
     else:
       concept = words
-    Statistician.error_if_not(words, self.index)
+    not_found = []
+    found = []
+    if no_errors:
+      for word in concept:
+        if word not in self.index:
+          not_found.append(word)
+        else:
+          found.append(word)
+      print("NOT FOUND: ", not_found)
+    else:
+      Statistician.error_if_not(words, self.index)
     # [{1983: 3, 1990: 62, ...},{},..]
-    mentions_of_each = [self.index[word] for word in concept]
+    if no_errors:
+      # this was just for testing purposes, the result if charted isn't ignoring the labels for not found keywords
+      mentions_of_each = [self.index[word] for word in found]
+    else:
+      mentions_of_each = [self.index[word] for word in concept]
     totals = {}
     for mentions in mentions_of_each:
       for year, count in mentions.items():
@@ -52,22 +67,21 @@ class Statistician(object):
           totals[year] = count / self.count_per_year[int(year)]
         else:
           totals[year] += count / self.count_per_year[int(year)]
-
     if chart_format:
       totals = self.format_for_chart(totals)
     return totals
 
 
-  def chart_frequency_for(self, words, smoothing=0, title="Título", save_to=None):
+  def chart_frequency_for(self, words, smoothing=0, title="Título", save_to=None, no_errors=False, extra_colors=False):
     """ Charts frequency for list of words chosen. Each word separately.
         Smoothing (= n) parameter means result for 1 year (Y) equals (Y-N + .. + Y-1 + Y + Y+1 + .. + Y+N)/2N+1
     """
     import matplotlib.pyplot as plt
-    frequencies = [self.word_frequency_for(word, chart_format=True) for word in words]
+    frequencies = [self.word_frequency_for(word, chart_format=True, no_errors=no_errors) for word in words]
     if smoothing > 0:
       frequencies = [self.smoothed(arr,smoothing) for arr in frequencies]
 
-    self.chart(frequencies, words, title=title, save_to=save_to)
+    self.chart(frequencies, words, title=title, save_to=save_to, extra_colors=extra_colors)
     return None
 
 
@@ -196,6 +210,51 @@ class Statistician(object):
     self.chart(res, comparison_words, title=title, save_to=save_to, horizontal_markers=markers)
     return None
 
+
+  def find_high_pmi_movies(self, year, target_words, context_words):
+    with open(CONFIG.datasets_path + "cooccurrence_matrices_" + str(self.window_size) + "/" + str(year) + "_reference.p", 'rb') as f:
+      reference = pickle.load(f)
+    general = self.yearly_pmi_for(target_words, context_words, year)
+    print(general)
+    indeces1, indeces2 = self.indeces(target_words, context_words, reference)
+    all = []
+    for movie in os.listdir(CONFIG.datasets_path + "partials/" + str(year) + "/"):
+      with open(CONFIG.datasets_path + "partials/" + str(year) + "/" + movie, 'rb') as f:
+        matrix = pickle.load(f)
+      n = matrix.sum()
+      joint_appearences = 0
+      for row in indeces1:
+        for col in indeces2:
+          try:
+            joint_appearences += matrix[row,col]
+            if matrix[col,row] > 0:
+              print("Found: " + movie)
+          except:
+            pass
+      if joint_appearences == 0:
+        pmi = 0
+      else:
+        calc = math.log((joint_appearences / n) / ((general['first'] / general['n']) * (general['second'] / general['n'])),2)
+        if calc < 0:
+          pmi = 0
+        else:
+          pmi = calc
+      all.append([movie, pmi])
+      all.sort(key=lambda a: -a[1])
+    return [[movie, pmi] for movie,pmi in all if pmi > 0]
+
+
+  def read_lines_with(self, target_words, context_words, year):
+    movies = self.find_high_pmi_movies(year, target_words, context_words)
+    for movie, pmi in movies:
+      print(movie)
+      id = movie[0:(movie.find('-'))]
+      sub = Subtitle(id)
+      subs = sub.subs_with(context_words,target_words)
+      return [[sub.text for sub in movie] for movie in subs]
+
+
+
   # Auxiliaries
 
   def yearly_w2v_for(self, target_words, context_words, year, threshold=None):
@@ -261,7 +320,7 @@ class Statistician(object):
     matrix, reference = self.load_matrix_for(year)
     indeces1, indeces2 = self.indeces(target_words, context_words, reference)
 
-    n = self.words_per_year[year]
+    n = matrix.sum()
     joint_appearences = 0
     for row in indeces1:
       for col in indeces2:
@@ -364,14 +423,23 @@ class Statistician(object):
     return result
 
 
-  def chart(self, data, labels, title="TÍTULO", save_to=None, horizontal_markers=[], vertical_markers=[]):
+  def chart(self, data, labels, title="TÍTULO", save_to=None, horizontal_markers=[], vertical_markers=[], extra_colors=False):
     import matplotlib.pyplot as plt
     plt.style.use('ggplot')
     fig = plt.figure(figsize=(14,7))
     ax = fig.add_subplot(111)
 
-    for series,words in zip(data,labels):
-      ax.plot([k for k,v in series], [v for k,v in series], label=words, marker='.')
+    if extra_colors:
+      colormap = plt.cm.spectral
+      total = len(data)
+      i = 1
+      for series,words in zip(data,labels):
+        c = colormap(i/12.,1)
+        i += 1
+        ax.plot(range(len(series)), [v for k,v in series], label=words, color=c, marker='.')
+    else:
+      for series,words in zip(data,labels):
+        ax.plot([k for k,v in series], [v for k,v in series], label=words, marker='.')
 
     for marker in horizontal_markers:
       ax.axhline(y=marker,color='black',ls='--')
