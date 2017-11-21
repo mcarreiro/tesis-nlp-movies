@@ -72,7 +72,7 @@ class Statistician(object):
     return totals
 
 
-  def chart_frequency_for(self, words, smoothing=0, title="Título", save_to=None, no_errors=False, extra_colors=False):
+  def chart_frequency_for(self, words, smoothing=0, title="Título", save_to=None, no_errors=False):
     """ Charts frequency for list of words chosen. Each word separately.
         Smoothing (= n) parameter means result for 1 year (Y) equals (Y-N + .. + Y-1 + Y + Y+1 + .. + Y+N)/2N+1
     """
@@ -81,7 +81,7 @@ class Statistician(object):
     if smoothing > 0:
       frequencies = [self.smoothed(arr,smoothing) for arr in frequencies]
 
-    self.chart(frequencies, words, title=title, save_to=save_to, extra_colors=extra_colors)
+    self.chart(frequencies, words, title=title, save_to=save_to, axes=["Año","Frecuencia relativa"])
     return None
 
 
@@ -126,7 +126,7 @@ class Statistician(object):
     if smoothing > 0:
       pmis = [self.smoothed(arr,smoothing) for arr in pmis]
 
-    self.chart(pmis, comparison_words, title=title, save_to=save_to, vertical_markers=highlights)
+    self.chart(pmis, comparison_words, title=title, save_to=save_to, vertical_markers=highlights, axes=["Año", "PPMI"])
     return None
 
   # Word to vec: distance of average of all context vectors to target vector
@@ -162,7 +162,7 @@ class Statistician(object):
       w2v = [self.smoothed(arr,smoothing) for arr in w2v]
 
     multiples = target_words if not isinstance(target_words,str) and len(target_words)>1 else context_words
-    self.chart(w2v, multiples, title=title, save_to=save_to, vertical_markers=highlights)
+    self.chart(w2v, multiples, title=title, save_to=save_to, vertical_markers=highlights, axes=["Año","Promedio w2v"])
     return None
 
 
@@ -178,7 +178,7 @@ class Statistician(object):
       w2v = [self.smoothed(arr,smoothing) for arr in w2v]
 
     multiples = target_words if not isinstance(target_words,str) and len(target_words)>1 else context_words
-    self.chart(w2v, multiples, title=title, save_to=save_to, vertical_markers=highlights)
+    self.chart(w2v, multiples, title=title, save_to=save_to, vertical_markers=highlights, axes=["Año","Proporción mayor al threshold"])
     return None
 
 
@@ -207,7 +207,7 @@ class Statistician(object):
       markers = [0.95]
     else:
       markers = highlights
-    self.chart(res, comparison_words, title=title, save_to=save_to, horizontal_markers=markers)
+    self.chart(res, comparison_words, title=title, save_to=save_to, horizontal_markers=markers, axes=["Año","Robustez de asociación"])
     return None
 
 
@@ -423,13 +423,14 @@ class Statistician(object):
     return result
 
 
-  def chart(self, data, labels, title="TÍTULO", save_to=None, horizontal_markers=[], vertical_markers=[], extra_colors=False):
+  def chart(self, data, labels, title="TÍTULO", save_to=None, horizontal_markers=[], vertical_markers=[], axes=[]):
     import matplotlib.pyplot as plt
     plt.style.use('ggplot')
     fig = plt.figure(figsize=(14,7))
     ax = fig.add_subplot(111)
+    plt.rcParams.update({'font.size': 14})
 
-    if extra_colors:
+    if len(labels) > 6:
       colormap = plt.cm.spectral
       total = len(data)
       i = 1
@@ -448,8 +449,18 @@ class Statistician(object):
     plt.locator_params(axis='x', nbins=85)
     plt.legend(loc='best')
     locs, labels = plt.xticks()
-    plt.setp(labels, rotation=90)
+    for idx, label in enumerate(labels):
+      if idx % 5 == 0:
+        label.set_visible(True)
+      else:
+        label.set_visible(False)
+    # plt.setp(labels, rotation=30)
+    # plt.setp(labels, visible=False)
+    # plt.setp(labels[::3], visible=True)
     plt.title(title)
+    if axes:
+      plt.xlabel(axes[0])
+      plt.ylabel(axes[1])
     plt.ylim(ymin=0)
     if save_to is None:
       plt.show()

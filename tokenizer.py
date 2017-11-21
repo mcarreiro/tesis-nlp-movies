@@ -35,6 +35,8 @@ class Tokenizer(object):
     words_for_removal.remove('hers')
     words_for_removal.remove('him')
     words_for_removal.remove('his')
+    words_for_removal.remove('herself')
+    words_for_removal.remove('himself')
     return [word for word in list_of_tokens if word not in words_for_removal]
 
   def lemmatize(self, list_of_tokens):

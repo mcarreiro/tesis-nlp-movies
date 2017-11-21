@@ -10,8 +10,6 @@ import os
 with open(CONFIG.datasets_path + "filtered_index_2017.p", 'rb') as f:
   subtitles_index = pickle.load(f, encoding='latin-1')
 
-# THIS NEEDS TO BE STOPPED AND RESTARTED. SAVE LAST MOVIE, READ EXISTING FILE, LOAD INTO MEMORY AND CONTINUE
-
 subs = subtitles_index[subtitles_index.MovieYear >= 1930][["IDSubtitleFile", "MovieYear"]]
 tokenizer = Tokenizer()
 index = {}

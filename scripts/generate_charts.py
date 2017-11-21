@@ -36,13 +36,12 @@ freq_st = Statistician()
 #   save_to=(folder_path + "freq_professions.png")
 # )
 
-freq_st.chart_frequency_for(
-  [["stroganoff"],["caviar"],["kasha"],["kissel"],["knish"],["pirozhki"],["sorrel"],["orlov"]],
-  smoothing=3,
-  title="Frecuencia por año de comida rusa",
-  save_to=(folder_path + "freq_russian_food.png"),
-  extra_colors=True
-)
+# freq_st.chart_frequency_for(
+#   [["stroganoff"],["caviar"],["kasha"],["kissel"],["knish"],["pirozhki"],["sorrel"],["orlov"]],
+#   smoothing=3,
+#   title="Frecuencia por año de comida rusa",
+#   save_to=(folder_path + "freq_russian_food.png")
+# )
 # [Beef Stroganoff,/Bliny,Caviar,Chicken Kiev,Coulibiac,Dressed herring,Golubtsy,Guriev porridge,Kasha,Kissel,Knish,Kholodets,Kulich,Medovukha,Mimosa salad,Oladyi,Olivier salad,Paskha,Pelmeni,Pirog,Pirozhki,Pozharsky cutlet,Rassolnik,Sbiten,Shchi,Solyanka,Sorrel soup,Syrniki,Ukha,Vatrushka,Veal Orlov,Vinegret,Zakuski]
 # ["stroganoff",/"bliny","caviar","kiev",/"coulibiac",/"golubtsy",/"guriev","kasha","kissel","knish",/"kholodets",/"kulich",/"kedovukha",/"oladyi",/"paskha",/"pelmeni",/"pirog","pirozhki","pozharsky",/"rassolnik",/"sbiten",/"shchi",/"solyanka","sorrel",/"syrniki",/"ukha",/"vatrushka","orlov",/'vinegret',/"zakuski"]
 
@@ -50,8 +49,7 @@ freq_st.chart_frequency_for(
 #   [["comrade"],["glasnost"],["gulag"],["intelligentsia"],["perestroika"],["politburo"],["tzar","tsar"],["commissar"],["apparatchik"],["agitprop"]],
 #   smoothing=3,
 #   title="Frecuencia por año de vocabulario de la Rusia Soviética",
-#   save_to=(folder_path + "freq_russian_vocab.png"),
-#   extra_colors=True
+#   save_to=(folder_path + "freq_russian_vocab.png")
 # )
 
 # res = {}
@@ -90,7 +88,7 @@ for window_size in [3,5,10,20]:
 
   # st.chart_pmi_for(
   #   ["terrorism","terrorist","terrorists"],
-  #   [["iraq", "iraqis", "iraqi"],["italian","italy","italians"],["arab","arabs"],["palestina","palestinian","palestinians"],["afghan", "afghans", "afghanstan"],["pakistan","pakistani","pakistanis"]],
+  #   [["iraq", "iraqis", "iraqi"],["italian","italy","italians"],["arab","arabs"],["palestine","palestinian","palestinians"],["afghan", "afghans", "afghanstan"],["pakistan","pakistani","pakistanis"]],
   #   smoothing=3,
   #   title="PPMI de 'terrorist','terrorists' y 'terrorism' (Nacionalidad)",
   #   save_to=(folder_path + "terrorism_nationality_" + str(window_size) + ".png")
@@ -208,7 +206,7 @@ for window_size in [3,5,10,20]:
 
   # st.chart_w2v_threshold_for(
   #   "terrorist",
-  #   [["iraq", "iraqis", "iraqi"],["italian","italy","italians"],["arab","arabs"],["palestina","palestinian","palestinians"],["afghan", "afghans", "afghanstan"],["pakistan","pakistani","pakistanis"]],
+  #   [["iraq", "iraqis", "iraqi"],["italian","italy","italians"],["arab","arabs"],["palestine","palestinian","palestinians"],["afghan", "afghans", "afghanstan"],["pakistan","pakistani","pakistanis"]],
   #   smoothing=3,
   #   title="Threshold W2V de los contextos de las nacionalidades vs. 'terrorist' (Nacionalidad)",
   #   save_to=(folder_path + "terrorism_nationality2_w2v_th_" + str(window_size) + ".png")
@@ -443,21 +441,21 @@ for window_size in [3,5,10,20]:
   #   save_to=(folder_path + "violence_countries_hg_" + str(window_size) + ".png")
   # )
 
-  st.chart_pmi_for(
-    ["russia","russian","russians"],
-    [["communist","communism","communists","commies","commie"],["comrade","glasnost","gulag","intelligentsia","perestroika","politburo","tzar","tsar","commissar","apparatchik","agitprop"],["stroganoff","caviar","kasha","kissel","knish","pirozhki","sorrel","orlov"]],
-    smoothing=3,
-    title="PPMI de vocabulario cultural ruso",
-    save_to=(folder_path + "russia_culture_" + str(window_size) + ".png")
-  )
+  # st.chart_pmi_for(
+  #   ["russia","russian","russians"],
+  #   [["communist","communism","communists","commies","commie"],["comrade","glasnost","gulag","intelligentsia","perestroika","politburo","tzar","tsar","commissar","apparatchik","agitprop"],["stroganoff","caviar","kasha","kissel","knish","pirozhki","sorrel","orlov"]],
+  #   smoothing=3,
+  #   title="PPMI de vocabulario cultural ruso",
+  #   save_to=(folder_path + "russia_culture_" + str(window_size) + ".png")
+  # )
 
-  st.chart_pmi_for(
-    ["russia","russian","russians"],
-    [["communist","communism","communists","commies","commie"],["glasnost","gulag","intelligentsia","perestroika","politburo","tzar","tsar","commissar","apparatchik","agitprop"],["stroganoff","kasha","kissel","knish","pirozhki","sorrel","orlov"]],
-    smoothing=3,
-    title="PPMI de vocabulario cultural ruso (sin 'comrade' ni 'caviar')",
-    save_to=(folder_path + "russia_culture_ex_" + str(window_size) + ".png")
-  )
+  # st.chart_pmi_for(
+  #   ["russia","russian","russians"],
+  #   [["communist","communism","communists","commies","commie"],["glasnost","gulag","intelligentsia","perestroika","politburo","tzar","tsar","commissar","apparatchik","agitprop"],["stroganoff","kasha","kissel","knish","pirozhki","sorrel","orlov"]],
+  #   smoothing=3,
+  #   title="PPMI de vocabulario cultural ruso (sin 'comrade' ni 'caviar')",
+  #   save_to=(folder_path + "russia_culture_ex_" + str(window_size) + ".png")
+  # )
 
 
 
