@@ -85,22 +85,6 @@ class Statistician(object):
     return None
 
 
-  def top_words_for(self, year, tolerance=0.7):
-    if not self.top_words:
-      with open(CONFIG.datasets_path + "deprecated/top_words.p", 'rb') as f:
-        self.top_words = pickle.load(f)
-    prevalence = {}
-
-    for y,l in self.top_words.items():
-      for word in l:
-        if word in prevalence:
-          prevalence[word] += 1
-        else:
-          prevalence[word] = 1
-
-    return [ word for word in self.top_words[str(year)] if prevalence[word] < tolerance * (2014-1930) ]
-
-
   # Positive Pointwise Mutual Information
   def pmi_for(self, words1, words2, chart_format=False):
     result = {}
@@ -209,49 +193,6 @@ class Statistician(object):
       markers = highlights
     self.chart(res, comparison_words, title=title, save_to=save_to, horizontal_markers=markers, axes=["Año","Robustez de asociación"])
     return None
-
-
-  def find_high_pmi_movies(self, year, target_words, context_words):
-    with open(CONFIG.datasets_path + "cooccurrence_matrices_" + str(self.window_size) + "/" + str(year) + "_reference.p", 'rb') as f:
-      reference = pickle.load(f)
-    general = self.yearly_pmi_for(target_words, context_words, year)
-    print(general)
-    indeces1, indeces2 = self.indeces(target_words, context_words, reference)
-    all = []
-    for movie in os.listdir(CONFIG.datasets_path + "partials/" + str(year) + "/"):
-      with open(CONFIG.datasets_path + "partials/" + str(year) + "/" + movie, 'rb') as f:
-        matrix = pickle.load(f)
-      n = matrix.sum()
-      joint_appearences = 0
-      for row in indeces1:
-        for col in indeces2:
-          try:
-            joint_appearences += matrix[row,col]
-            if matrix[col,row] > 0:
-              print("Found: " + movie)
-          except:
-            pass
-      if joint_appearences == 0:
-        pmi = 0
-      else:
-        calc = math.log((joint_appearences / n) / ((general['first'] / general['n']) * (general['second'] / general['n'])),2)
-        if calc < 0:
-          pmi = 0
-        else:
-          pmi = calc
-      all.append([movie, pmi])
-      all.sort(key=lambda a: -a[1])
-    return [[movie, pmi] for movie,pmi in all if pmi > 0]
-
-
-  def read_lines_with(self, target_words, context_words, year):
-    movies = self.find_high_pmi_movies(year, target_words, context_words)
-    for movie, pmi in movies:
-      print(movie)
-      id = movie[0:(movie.find('-'))]
-      sub = Subtitle(id)
-      subs = sub.subs_with(context_words,target_words)
-      return [[sub.text for sub in movie] for movie in subs]
 
 
 
@@ -467,33 +408,6 @@ class Statistician(object):
     else:
       plt.savefig(save_to, dpi=199)
     plt.close()
-
-
-  def squash_years_into(self, result, years=5):
-    new = True
-    squashed = {}
-    for year,data in result.items():
-      if new:
-        year_count = 1
-        first = 0
-        second = 0
-        joint = 0
-        n = 0
-        new = False
-        year_mark = year
-      first += data["first"]
-      second += data["second"]
-      joint += data["joint"]
-      n += data["n"]
-      year_count += 1
-      if year_count == years:
-        new = True
-        if joint == 0 or first == 0 or second == 0:
-          pmi = 0
-        else:
-          pmi = math.log((joint / (first * second))*n,2)
-        squashed[year_mark] = {"first": first, "second": second, "n": n, "joint": joint, "pmi": pmi}
-    return squashed
 
 
   def sub_files(self, word):
