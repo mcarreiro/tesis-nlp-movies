@@ -264,73 +264,6 @@ window_size = 10
 #   save_to=(folder_path + "gender_roles_fem_hg_" + str(window_size) + ".png")
 # )
 
-
-# st.chart_w2v_threshold_for(["she","he"],[
-#   "architect",
-#   "carpenter",
-#   "coach",
-#   "contractor",
-#   "detective",
-#   "electrician",
-#   "engineer",
-#   "farmer",
-#   "firefighter",
-#   "gambler",
-#   "inventor",
-#   "machinist",
-#   "mechanic",
-#   "officer",
-#   "physicist",
-#   "pilot",
-#   "programmer",
-#   "rancher",
-#   "sheriff",
-#   "soldier"
-# ],
-# smoothing=3,
-# title="Roles masculinos (Threshold W2V)",
-# save_to=(folder_path + "gender_roles_masc_w2v" + str(window_size) + ".png"))
-
-# st.chart_w2v_threshold_for(["she","he"],[
-#   "beautician",
-#   "caregiver",
-#   "cheerleader",
-#   "dancer",
-#   "decorator",
-#   "designer",
-#   "dietician",
-#   "florist",
-#   "hairdresser",
-#   "homemaker",
-#   "housekeeper",
-#   "model",
-#   "nanny",
-#   "nurse",
-#   "receptionist",
-#   "stylist",
-#   "typist"
-# ],
-# smoothing=3,
-# title="Roles femeninos (Threshold W2V)",
-# save_to=(folder_path + "gender_roles_fem_w2v" + str(window_size) + ".png"))
-
-# st.chart_w2v_threshold_for(["she","he"],[
-#   "assistant",
-#   "cashier",
-#   "clerk",
-#   "doctor",
-#   "editor",
-#   "lawyer",
-#   "poet",
-#   "reporter",
-#   "servant",
-#   "worker"
-# ],
-# smoothing=3,
-# title="Roles neutrales (Threshold W2V)",
-# save_to=(folder_path + "gender_roles_neu_w2v" + str(window_size) + ".png")
-# )
-
 # st.chart_pmi_for(
 #   [
 #     "architect",
@@ -438,7 +371,7 @@ window_size = 10
 #   "engineers",
 #   [["she","her","hers", "herself"],["him","his","he", "himself"]],
 #   smoothing=3,
-#   title="Threshold W2V de 'engineers'",
+#   title="Threshold word2vec de 'engineers'",
 #   save_to=(folder_path + "gender_engineer_w2v_th" + str(window_size) + ".png")
 # )
 
@@ -453,7 +386,7 @@ window_size = 10
 #   "accountants",
 #   [["she","her","hers", "herself"],["him","his","he", "himself"]],
 #   smoothing=3,
-#   title="Threshold W2V de 'accountants'",
+#   title="Threshold word2vec de 'accountants'",
 #   save_to=(folder_path + "gender_accountant_w2v_th" + str(window_size) + ".png")
 # )
 
@@ -468,7 +401,7 @@ window_size = 10
 #   "chef",
 #   [["she","her","hers", "herself"],["him","his","he", "himself"]],
 #   smoothing=3,
-#   title="Threshold W2V 'chef'",
+#   title="Threshold word2vec 'chef'",
 #   save_to=(folder_path + "gender_chef_w2v_th" + str(window_size) + ".png")
 # )
 
@@ -476,7 +409,7 @@ window_size = 10
 #   "cook",
 #   [["she","her","hers", "herself"],["him","his","he", "himself"]],
 #   smoothing=3,
-#   title="Threshold W2V de 'cooks'",
+#   title="Threshold word2vec de 'cooks'",
 #   save_to=(folder_path + "gender_cook_w2v_th" + str(window_size) + ".png")
 # )
 
@@ -498,7 +431,7 @@ window_size = 10
 #   "nurse",
 #   [["she","her","hers","herself"],["him","his","he","himself"]],
 #   smoothing=3,
-#   title="Threshold W2V de 'nurse'",
+#   title="Threshold word2vec de 'nurse'",
 #   save_to=(folder_path + "gender_nurse_w2v_th" + str(window_size) + ".png")
 # )
 
@@ -513,7 +446,7 @@ window_size = 10
 #   "realtor",
 #   [["she","her","hers","herself"],["him","his","he","himself"]],
 #   smoothing=3,
-#   title="Threshold W2V de 'realtor'",
+#   title="Threshold word2vec de 'realtor'",
 #   save_to=(folder_path + "gender_realtor_w2v_th" + str(window_size) + ".png")
 # )
 
@@ -553,7 +486,7 @@ window_size = 10
 #   "terrorist",
 #   [["iraq", "iraqis", "iraqi"],["italian","italy","italians"],["arab","arabs"],["palestine","palestinian","palestinians"],["afghan", "afghans", "afghanstan"],["pakistan","pakistani","pakistanis"]],
 #   smoothing=3,
-#   title="Threshold W2V de los contextos de las nacionalidades vs. 'terrorist' (Nacionalidad)",
+#   title="Threshold word2vec de los contextos de las nacionalidades vs. 'terrorist' (Nacionalidad)",
 #   save_to=(folder_path + "terrorism_nationality2_w2v_th_" + str(window_size) + ".png")
 # )
 
@@ -576,7 +509,7 @@ window_size = 10
 #   ["muslim","christian","jew"],
 #   ["terrorist","terrorists","terrorism"],
 #   smoothing=3,
-#   title="Promedio W2V de los contextos de 'terrorist' (Religión)",
+#   title="Promedio word2vec de los contextos de 'terrorist' (Religión)",
 #   save_to=(folder_path + "terorrism_religion_w2v_" + str(window_size) + ".png")
 # )
 
@@ -584,7 +517,15 @@ window_size = 10
 #   ["muslim","christian","jew"],
 #   ["terrorist","terrorists","terrorism"],
 #   smoothing=3,
-#   title="Threshold W2V de los contextos de 'terrorist' (Religión)",
+#   title="Threshold word2vec de los contextos de 'terrorist' (Religión)",
+#   save_to=(folder_path + "terorrism_religion_w2v_th_" + str(window_size) + ".png")
+# )
+
+# st.chart_w2v_threshold_for(
+#   ["muslim","christian","jew"],
+#   ["terrorist","terrorists","terrorism"],
+#   smoothing=3,
+#   title="Threshold word2vec de los contextos de 'terrorist' (Religión)",
 #   save_to=(folder_path + "terorrism_religion_w2v_th_" + str(window_size) + ".png")
 # )
 
@@ -592,7 +533,7 @@ window_size = 10
 #   ["rat","hunt","cage","nest","arrest","prison","hideout"],
 #   ["muslim","muslims","islam"],
 #   smoothing=3,
-#   title="Threshold W2V de los contextos de 'muslim' (Deshumanización)",
+#   title="Threshold word2vec de los contextos de 'muslim' (Deshumanización)",
 #   save_to=(folder_path + "terorrism_muslim_dehumanization2_w2v_th_" + str(window_size) + ".png")
 # )
 
@@ -600,7 +541,7 @@ window_size = 10
 #   ["rat","hunt","cage","nest","arrest","prison","hideout"],
 #   ["terrorist","terrorism","terrorists"],
 #   smoothing=3,
-#   title="Threshold W2V de los contextos de 'terrorist' (Deshumanización)",
+#   title="Threshold word2vec de los contextos de 'terrorist' (Deshumanización)",
 #   save_to=(folder_path + "terorrism_dehumanization2_w2v_th_" + str(window_size) + ".png")
 # )
 
@@ -670,7 +611,7 @@ window_size = 10
 #   "russian",
 #   [["communist","communism","communists","commies","commie"],["mob","mobster","gangster","mafia","gangsters"],["poor","poverty","hunger"],["bride","brides","mailorder"]],
 #   smoothing=3,
-#   title="Threshold W2V de los contextos de estereotipos vs. 'russia'",
+#   title="Threshold word2vec de los contextos de estereotipos vs. 'russia'",
 #   save_to=(folder_path + "russia_associations2_w2v_th_" + str(window_size) + ".png")
 # )
 
@@ -678,7 +619,7 @@ window_size = 10
 #   ["communist","gangster","poor","bride"],
 #   ["russian","russians","russia"],
 #   smoothing=3,
-#   title="Threshold W2V de los contextos de 'russia' (Estereotipos)",
+#   title="Threshold word2vec de los contextos de 'russia' (Estereotipos)",
 #   save_to=(folder_path + "russia_associations_w2v_th_" + str(window_size) + ".png")
 # )
 
