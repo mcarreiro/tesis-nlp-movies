@@ -1,6 +1,6 @@
 # coding: utf-8
 import pickle
-import config as CONFIG
+from config import *
 import numpy as np
 from scipy.sparse import coo_matrix, lil_matrix
 from scipy.sparse.linalg import svds
@@ -12,7 +12,6 @@ from scipy.stats import fisher_exact
 tokenizer = Tokenizer()
 
 YEAR_RANGES = [list(range(e, e + 10)) for e in list(range(1967, 2017, 10))]
-
 
 class CooccurrenceMatrix(object):
 
@@ -26,7 +25,7 @@ class CooccurrenceMatrix(object):
         self.index = {}
         for i, row in enumerate(subs_ids.itertuples()):
             year = int(row.imdb_year)
-            with open(CONFIG.datasets_path + "contexts/%02d/%s_tokens.p" % (self.length, str(int(row.sub_id))), "rb") as f:
+            with open(datasets_path + "contexts/%02d/%s_tokens.p" % (self.length, str(int(row.sub_id))), "rb") as f:
                 tokens = pickle.load(f)
             for token in tokens:
                 if token not in self.index:
@@ -67,7 +66,7 @@ class CooccurrenceMatrix(object):
         self.contexts = {}
         self.denom = 0
         for i, s in enumerate([int(e) for e in subs_ids.sub_id]):
-            with open(CONFIG.datasets_path + "contexts/%02d/%s_contexts.p" % (self.length, str(int(s))), "rb") as f:
+            with open(datasets_path + "contexts/%02d/%s_contexts.p" % (self.length, str(int(s))), "rb") as f:
                 s_contexts = pickle.load(f)
                 # Check that the matrix will be symmetric
                 # for t1 in s_contexts:
@@ -266,7 +265,7 @@ class CooccurrenceMatrix(object):
 if __name__ == "__main__":
 
     def create_embeddings(length, sample, svd=False, ppmi=False):
-        top_movies = pd.read_csv(CONFIG.datasets_path + "filtered_index.txt", sep="\t")
+        top_movies = pd.read_csv(datasets_path + "filtered_index.txt", sep="\t")
         top_movies["imdb_genre"] = [eval(e) if not isinstance(e, float) else np.nan for e in top_movies.imdb_genre]
 
         if sample == "family":
@@ -284,12 +283,12 @@ if __name__ == "__main__":
 
             if svd:
                 cm.build_svd(300)
-                with open(CONFIG.datasets_path + "cooccurrence_matrices/svd/%s/%02d/%d.p" % (sample, length, y[0]), "wb") as f:
+                with open(datasets_path + "cooccurrence_matrices/svd/%s/%02d/%d.p" % (sample, length, y[0]), "wb") as f:
                     pickle.dump(cm, f)
 
             if ppmi:
                 cm.build_cooc_matrix()
-                with open(CONFIG.datasets_path + "cooccurrence_matrices/ppmi/%s/%02d/%d.p" % (sample, length, y[0]), "wb") as f:
+                with open(datasets_path + "cooccurrence_matrices/ppmi/%s/%02d/%d.p" % (sample, length, y[0]), "wb") as f:
                     pickle.dump(cm, f)
 
         # 2000 onwards
@@ -303,12 +302,12 @@ if __name__ == "__main__":
 
         if svd:
             cm.build_svd(300)
-            with open(CONFIG.datasets_path + "cooccurrence_matrices/svd/%s/%02d/2000_onwards.p" % (sample, length), "wb") as f:
+            with open(datasets_path + "cooccurrence_matrices/svd/%s/%02d/2000_onwards.p" % (sample, length), "wb") as f:
                 pickle.dump(cm, f)
 
         if ppmi:
             cm.build_cooc_matrix()
-            with open(CONFIG.datasets_path + "cooccurrence_matrices/ppmi/%s/%02d/2000_onwards.p" % (sample, length), "wb") as f:
+            with open(datasets_path + "cooccurrence_matrices/ppmi/%s/%02d/2000_onwards.p" % (sample, length), "wb") as f:
                 pickle.dump(cm, f)
 
     def load_embeddings(length, sample, metric):
@@ -316,7 +315,7 @@ if __name__ == "__main__":
         for y in YEAR_RANGES:
             print(y[0])
             if metric == "svd":
-                with open(CONFIG.datasets_path + "cooccurrence_matrices/svd/%s/%02d/%d.p" % (sample, length, y[0]), "rb") as f:
+                with open(datasets_path + "cooccurrence_matrices/svd/%s/%02d/%d.p" % (sample, length, y[0]), "rb") as f:
                     emb_tmp = pickle.load(f)
                 emb_tmp.n_tokens = sum([emb_tmp.lemmatized_index[e]["total"] for e in emb_tmp.lemmatized_index])
                 embeddings[y[0]] = emb_tmp
@@ -325,7 +324,7 @@ if __name__ == "__main__":
                 del embeddings[y[0]].lemmas_order
                 del embeddings[y[0]].Vt
             elif metric == "ppmi":
-                with open(CONFIG.datasets_path + "cooccurrence_matrices/ppmi/%s/%02d/%d.p" % (sample, length, y[0]), "rb") as f:
+                with open(datasets_path + "cooccurrence_matrices/ppmi/%s/%02d/%d.p" % (sample, length, y[0]), "rb") as f:
                     emb_tmp = pickle.load(f)
                 emb_tmp.n_tokens = sum([emb_tmp.lemmatized_index[e]["total"] for e in emb_tmp.lemmatized_index])
                 embeddings[y[0]] = emb_tmp
@@ -335,7 +334,7 @@ if __name__ == "__main__":
 
         # 2000 onwards
         if metric == "svd":
-            with open(CONFIG.datasets_path + "cooccurrence_matrices/svd/%s/%02d/2000_onwards.p" % (sample, length), "rb") as f:
+            with open(datasets_path + "cooccurrence_matrices/svd/%s/%02d/2000_onwards.p" % (sample, length), "rb") as f:
                 emb_tmp = pickle.load(f)
             embeddings["2000_onwards"] = emb_tmp
             del embeddings["2000_onwards"].contexts
@@ -343,7 +342,7 @@ if __name__ == "__main__":
             del embeddings["2000_onwards"].lemmas_order
             del embeddings["2000_onwards"].Vt
         elif metric == "ppmi":
-            with open(CONFIG.datasets_path + "cooccurrence_matrices/ppmi/%s/%02d/2000_onwards.p" % (sample, length), "rb") as f:
+            with open(datasets_path + "cooccurrence_matrices/ppmi/%s/%02d/2000_onwards.p" % (sample, length), "rb") as f:
                 emb_tmp = pickle.load(f)
             embeddings["2000_onwards"] = emb_tmp
             del embeddings["2000_onwards"].contexts
@@ -381,7 +380,7 @@ if __name__ == "__main__":
         res = ["year\the\tshe\tp_value"]
         for (e1, e2), (e3, e4), (e5, e6) in dists:
             res.append("\t".join([str(e1), str(e2), str(e4), str(e6)]))
-        with open("/home/ramiro/Dropbox/bias_holllywood/data/%s.txt" % filename, "w") as f:
+        with open(graph_path + "%s.txt" % filename, "w") as f:
             f.write("\n".join(res) + "\n")
 
     def gen_diff(w1, w2, w3, embeddings, filename, alpha=0.75):
@@ -392,7 +391,7 @@ if __name__ == "__main__":
 
         res = ["he\tshe\tp_value", "\t".join([str(e) for e in dists])]
 
-        with open("/home/ramiro/Dropbox/bias_holllywood/data/%s.txt" % filename, "w") as f:
+        with open(graph_path + "%s.txt" % filename, "w") as f:
             f.write("\n".join(res) + "\n")
 
     def evol_freq(w1, embeddings):
@@ -410,93 +409,13 @@ if __name__ == "__main__":
     embeddings_full = load_embeddings(30, "full", metric="ppmi")
     embeddings_family = load_embeddings(30, "family", metric="ppmi")
 
-    feminine_roles = ["beautician", "caregiver", "cheerleader", "dancer", "decorator", "designer",
-                      "dietician", "florist", "hairdresser", "homemaker", "housekeeper", "model",
-                      "nanny", "nurse", "receptionist", "stylist", "typist"]
-
-    masculine_roles = ["architect", "carpenter", "coach", "contractor", "detective", "electrician",
-                       "engineer", "farmer", "firefighter", "gambler", "inventor", "machinist",
-                       "mechanic", "officer", "physicist", "pilot", "programmer", "rancher",
-                       "sheriff", "soldier"]
-
-    neutral_roles = ["assistant", "cashier", "clerk", "doctor", "editor", "lawyer", "poet",
-                     "reporter", "servant", "worker"]
-
-    feminine_traits = ["affectionate", "caring", "cheerful", "compassionate", "delicate", "emotional",
-                       "flatterable", "gentle", "gossipy", "humble", "loyal", "moody", "nagging", "polite",
-                       "sensitive", "shy", "sympathetic", "tender", "understanding", "warm"]
-
-    masculine_traits = ["aggressive", "ambitious", "analytical", "arrogant", "assertive", "athletic",
-                        "authoritative", "bold", "capable", "charismatic", "competitive", "confident",
-                        "crude", "daring", "decisive", "dominant", "forceful", "independent",
-                        "individualistic", "reckless", "unyielding", "vulgar"]
-
-    neutral_traits = ["adaptable", "candid", "childlike", "conceited", "conscientious", "conventional",
-                      "earnest", "forward", "friendly", "gullible", "happy", "helpful", "inefficient",
-                      "irrational", "jealous", "likable", "outspoken", "reliable", "ridiculous",
-                      "secretive", "sincere", "solemn", "stubborn", "tactful", "theatrical", "truthful",
-                      "unpredictable", "unsystematic", "yielding"]
-
-    # male_names = ["james", "john", "robert", "michael", "william", "david", "richard", "joseph",
-    #              "thomas", "charles", "christopher", "daniel", "matthew", "anthony", "donald", "mark",
-    #              "paul", "steven", "andrew", "kenneth", "george", "joshua", "kevin", "brian", "edward",
-    #              "ronald", "timothy", "jason", "jeffrey", "ryan", "gary", "jacob", "nicholas", "eric",
-    #              "stephen", "jonathan", "larry", "justin", "scott", "frank", "brandon", "raymond",
-    #              "gregory", "benjamin", "samuel", "patrick", "alexander", "jack", "dennis", "jerry",
-    #              "tyler", "aaron", "henry", "douglas", "jose", "peter", "adam", "zachary", "nathan",
-    #              "walter", "harold", "kyle", "carl", "arthur", "gerald", "roger", "keith", "jeremy",
-    #              "terry", "lawrence", "sean", "christian", "albert", "joe", "ethan", "austin", "jesse",
-    #              "willie", "billy", "bryan", "bruce", "jordan", "ralph", "roy", "noah", "dylan", "eugene",
-    #              "wayne", "alan", "juan", "louis", "russell", "gabriel", "randy", "philip", "harry",
-    #              "vincent", "bobby", "johnny", "logan"]
-
-    # female_names = ["mary", "patricia", "jennifer", "elizabeth", "linda", "barbara", "susan", "jessica",
-    #                "margaret", "sarah", "karen", "nancy", "betty", "lisa", "dorothy", "sandra", "ashley",
-    #                "kimberly", "donna", "carol", "michelle", "emily", "amanda", "helen", "melissa",
-    #                "deborah", "stephanie", "laura", "rebecca", "sharon", "cynthia", "kathleen", "amy",
-    #                "shirley", "anna", "angela", "ruth", "brenda", "pamela", "nicole", "katherine", "virginia",
-    #                "catherine", "christine", "samantha", "debra", "janet", "rachel", "carolyn", "emma",
-    #                "maria", "heather", "diane", "julie", "joyce", "evelyn", "frances", "joan", "christina",
-    #                "kelly", "victoria", "lauren", "martha", "judith", "cheryl", "megan", "andrea", "ann",
-    #                "alice", "jean", "doris", "jacqueline", "kathryn", "hannah", "olivia", "gloria", "marie",
-    #                "teresa", "sara", "janice", "julia", "grace", "judy", "theresa", "rose", "beverly",
-    #                "denise", "marilyn", "amber", "madison", "danielle", "brittany", "diana", "abigail", "jane",
-    #                "natalie", "lori", "tiffany", "alexis", "kayla"]
-
-    # smart_words = ["ingenious", "genius", "geniously",
-    #               "brilliant", "brilliance", "brilliantly",
-    #               "clever", "cleverness", "cleverly",
-    #               "intelligent", "intelligence", "intelligently"]
-
-    smart_words = ["ingenious", "genius", "ingeniousness", "ingeniously",
-                   "bright", "brightness", "brightly",
-                   "brilliant", "brilliance", "brilliantly"
-                   "clever", "cleverness", "cleverly",
-                   "intelligent", "intelligence", "intelligently"]
-
-    smart_words_jf = ["precocious", "resourceful", "inquisitive", "sagacious", "inventive", "astute", "adaptable",
-                      "reflective", "discerning", "intuitive", "inquiring", "judicious", "analytical", "luminous",
-                      "venerable", "imaginative", "shrewd", "thoughtful", "sage", "smart", "ingenious", "clever",
-                      "brilliant", "logical", "intelligent", "apt", "genius", "wise"]
-
-    #"gifted", "giftedness", "giftedly",
-    #"smart", "smartness",
-    #"inventive", "inventiveness",
-    #"expert", "expertise",
-    #"erudite", "eruditeness"
-    #"bright", "brightness",
-    #"astute", "astuteness"
-
-    male_pronouns = ["he", "his", "him", "himself"]
-    female_pronouns = ["she", "her", "hers", "herself"]
-
     # Data for relative evolution
     def relative_evol(embeddings, filename):
         evol_man, evol_fem = evol_freq(male_pronouns, embeddings), evol_freq(female_pronouns, embeddings)
         evol_data = ["year\tn\the\tshe"]
         for e in range(len(evol_man)):
             evol_data.append("\t".join([str(evol_man[e][0]), str(embeddings[evol_man[e][0]].n_subs), str(evol_man[e][1]), str(evol_fem[e][1])]))
-        with open("/home/ramiro/Dropbox/bias_holllywood/data/%s.txt" % filename, "w") as f:
+        with open(graph_path + "%s.txt" % filename, "w") as f:
             f.write("\n".join(evol_data) + "\n")
 
     relative_evol(embeddings_full, "evol_freq_full")
