@@ -3,3 +3,5 @@
 __pycache__/
 .cache
 word2vec_tutorial.py
+.venv/
+.idea/
