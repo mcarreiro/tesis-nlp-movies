@@ -1,166 +1,551 @@
-import sys
-sys.path.append('..')
-import numpy as np
-from scipy.sparse import coo_matrix
-from scipy.sparse import csr_matrix
-from repo.subtitle import Subtitle
-import repo.config as CONFIG
-import pandas as pd
+# coding: utf-8
 import pickle
-import os
-import math
+import config as CONFIG
+import numpy as np
+from scipy.sparse import coo_matrix, lil_matrix
+from scipy.sparse.linalg import svds
+import pandas as pd
+from Tokenizer import Tokenizer
+import gc
+from scipy.stats import fisher_exact
+
+tokenizer = Tokenizer()
+
+YEAR_RANGES = [list(range(e, e + 10)) for e in list(range(1967, 2017, 10))]
 
 
 class CooccurrenceMatrix(object):
 
-  def __init__(self, window_size):
-    with open(CONFIG.datasets_path + "filtered_index_2017.p", 'rb') as f:
-      self.subs = pickle.load(f, encoding='latin-1')
-    self.window_size = int(window_size)
+    def __init__(self, subs_ids, length, min_freq):
 
+        self.length = length
+        self.min_freq = min_freq
+        self.n_subs = subs_ids.shape[0]
 
-  def build(self, year, save_each_movie=False):
-    print("START BUILD OF YEAR ", year)
-    word_to_index = {}
-    next_index = 0
-    year_subs = self.subs[self.subs.MovieYear == year][["IDSubtitleFile", "MovieYear","MovieName"]]
-    temp_matrix = None
-    for entry in year_subs.itertuples():
-      try:
-        row, col, count = [],[],[]
-        subId = str(int(entry.IDSubtitleFile))
-        print(subId)
-        sub = Subtitle(int(subId))
-        contexts = sub.context_for_every_sub(self.window_size)
-        if len(contexts) == 0:
-          # Bizarre movie with 10 subs which are mostly empty/description in between brackets
-          continue
-        # sub = [word1, word2], context = [word3, word4]
-        for sub,context in contexts:
-          for word in sub:
-            # Get an index for this word in the matrix
-            if word in word_to_index:
-              i = word_to_index[word]
-            else:
-              i = next_index
-              word_to_index[word] = i
-              next_index += 1
+        # Get appearances of tokens by year
+        self.index = {}
+        for i, row in enumerate(subs_ids.itertuples()):
+            year = int(row.imdb_year)
+            with open(CONFIG.datasets_path + "contexts/%02d/%s_tokens.p" % (self.length, str(int(row.sub_id))), "rb") as f:
+                tokens = pickle.load(f)
+            for token in tokens:
+                if token not in self.index:
+                    self.index[token] = {}
+                if year not in self.index[token]:
+                    self.index[token][year] = 0
+                self.index[token][year] += 1
 
-            # Add each context for this word.
-            # There will be duplicates, but the matrix will handle them:
-            # https://docs.scipy.org/doc/scipy/reference/generated/scipy.sparse.coo_matrix.html
-            for c in sub + context:
-              if c == word:
+        # Get lemmas
+        self.lemmas = dict(zip(self.index, tokenizer.lemmatize(self.index)))
+
+        # Get appearances of lemmas by year
+        self.lemmatized_index = {}
+        for t, l in self.lemmas.items():
+            if l not in self.lemmatized_index:
+                self.lemmatized_index[l] = {}
+            for y in self.index[t]:
+                # if y == "total":
+                #    continue
+                self.lemmatized_index[l][y] = self.lemmatized_index[l].get(y, 0) + self.index[t][y]
+
+        # Get total appearances of lemmas
+        for l in self.lemmatized_index:
+            # if "total" in self.lemmatized_index[l]:
+            #    del self.lemmatized_index[l]["total"]
+            self.lemmatized_index[l]["total"] = sum(self.lemmatized_index[l].values())
+
+        # Leave out unfrequent lemmas
+        for l in list(self.lemmatized_index):
+            if self.lemmatized_index[l]["total"] < self.min_freq:
+                del self.lemmatized_index[l]
+
+        self.lemmas_order = dict([(l, i) for (i, l) in enumerate(sorted(self.lemmatized_index))])
+        self.lemmas = dict([(t, {"l": l, "order": self.lemmas_order[l]}) for (t, l) in self.lemmas.items() if (l in self.lemmatized_index)])
+        self.n_tokens = sum([self.lemmatized_index[e]["total"] for e in self.lemmatized_index])
+
+        # Generate the aggregate contexts
+        self.contexts = {}
+        self.denom = 0
+        for i, s in enumerate([int(e) for e in subs_ids.sub_id]):
+            with open(CONFIG.datasets_path + "contexts/%02d/%s_contexts.p" % (self.length, str(int(s))), "rb") as f:
+                s_contexts = pickle.load(f)
+                # Check that the matrix will be symmetric
+                # for t1 in s_contexts:
+                #    for t2 in s_contexts[t1]:
+                #        assert(s_contexts[t1][t2] == s_contexts[t2][t1])
+
+            for t in s_contexts:
+                if t not in self.lemmas:
+                    continue
+                tl = self.lemmas[t]["l"]
+                if tl not in self.contexts:
+                    self.contexts[tl] = {}
+                for c in s_contexts[t]:
+                    if c not in self.lemmas:
+                        continue
+                    cl = self.lemmas[c]["l"]
+                    self.contexts[tl][cl] = self.contexts[tl].get(cl, 0) + s_contexts[t][c]
+                    self.denom += s_contexts[t][c]
+
+    def build_cooc_matrix(self):
+        rows = []
+        cols = []
+        freq = []
+        for l1 in self.contexts:
+            for l2 in self.contexts[l1]:
+                rows.append(self.lemmas_order[l1])
+                cols.append(self.lemmas_order[l2])
+                fij = self.contexts[l1][l2]
+                freq.append(fij)
+
+        rows = np.array(rows)
+        cols = np.array(cols)
+        freq = np.array(freq)
+
+        self.cooc_matrix = coo_matrix((freq, (rows, cols)),
+                                      shape=(len(self.lemmas_order),
+                                             len(self.lemmas_order)))
+
+    def build_svd(self, dim):  # No está tan revisado
+        self.dim = dim + 1
+        rows = []
+        cols = []
+        freq = []
+        gw_freq = []
+        sorted_lemmas = sorted(self.lemmas_order, key=lambda x: self.lemmas_order[x])
+        for l1 in sorted_lemmas:  # Paso por todos los lemas, esté o no
+            if l1 not in self.contexts:
+                gw_freq.append(1)
                 continue
-              # Get an index for the c word
-              if c in word_to_index:
-                c_i = word_to_index[c]
-              else:
-                c_i = next_index
-                word_to_index[c] = c_i
-                next_index += 1
-              row.append(i)
-              col.append(c_i)
-              count.append(1)
-        # print("Making single matrix")
-        if len(row) == 0 or len(col) == 0:
-          continue
-        single_film_matrix = coo_matrix((count, (row, col)))
-        single_film_matrix = single_film_matrix.tocsr()
-        if save_each_movie:
-          print("Saving " + entry.MovieName)
-          CooccurrenceMatrix.save_partial(single_film_matrix, entry.MovieName, entry.IDSubtitleFile, year)
+            else:
+                acum = 0
+                for l2 in self.contexts[l1]:
+                    rows.append(self.lemmas_order[l1])
+                    cols.append(self.lemmas_order[l2])
+                    fij = self.contexts[l1][l2]
+                    freq.append(fij)
+                    acum += (fij / self.denom) * np.log(fij / self.denom)
+                gw_freq.append(1 + ((acum) / np.log(self.n_subs)))
+
+        rows = np.array(rows)
+        cols = np.array(cols)
+        freq = np.array(freq)
+        gw_freq = np.array(gw_freq)
+        lw_freq = np.log(freq + 1)  # Local weight
+
+        cooc_matrix = coo_matrix((lw_freq, (rows, cols)),
+                                 shape=(len(self.lemmas_order),
+                                        len(self.lemmas_order)))
+
+        gw_tmp = lil_matrix((len(self.lemmas_order), len(self.lemmas_order)))
+        gw_tmp.setdiag(gw_freq)
+
+        cooc_matrix = gw_tmp * cooc_matrix
+
+        self.U, self.S, self.Vt = svds(cooc_matrix, k=self.dim)
+
+    def ppmi(self, w1, w2, alpha):
+        w1 = filter(lambda x: x in self.lemmas, w1)
+        v1_loc = []
+        for l in w1:
+            v1_loc.append(self.lemmas[l]["order"])
+
+        w2 = filter(lambda x: x in self.lemmas, w2)
+        v2_loc = []
+        for l in w2:
+            v2_loc.append(self.lemmas[l]["order"])
+
+        csr_matrix = self.cooc_matrix.tocsr()
+
+        if not v1_loc or not v2_loc:
+            return None
         else:
-          if temp_matrix is not None:
-            print("Adding up to previous matrix")
-            temp_matrix = CooccurrenceMatrix.sum_through_coo(temp_matrix,single_film_matrix)
-          else:
-            temp_matrix = single_film_matrix
-      except FileNotFoundError:
-        print("ERROR")
-    if not save_each_movie:
-      print("Saving full year matrix")
-      matrix = temp_matrix.tocsr()
-      CooccurrenceMatrix.save_to_file(matrix, word_to_index, year, self.window_size)
-      [word_to_index, matrix]
+            for i, l1 in enumerate(v1_loc):
+                if not i:
+                    row_sums = csr_matrix.getrow(l1).todense()
+                else:
+                    row_sums += csr_matrix.getrow(l1).todense()
+
+            for i, l2 in enumerate(v2_loc):
+                if not i:
+                    col_sums = csr_matrix.getrow(l2).todense()
+                else:
+                    col_sums += csr_matrix.getrow(l2).todense()
+
+        p_ij = row_sums[0, v2_loc].sum() / csr_matrix.sum()
+        p_i = row_sums.sum() / csr_matrix.sum()
+        p_j = np.power(col_sums.sum(), alpha) / csr_matrix.power(alpha).sum()
+
+        return(0 if (p_ij == 0) else max(np.log2(p_ij / (p_i * p_j)), 0))
+
+    def dist_svd(self, w1, w2, dim=300):
+
+        # Set vector to norm 1
+        U = np.delete(self.U, [0], axis=1)
+        U = U[:, range(dim)]
+        U = U / np.linalg.norm(U, axis=1).reshape(U.shape[0], 1)
+
+        w1 = filter(lambda x: x in self.lemmas, w1)
+        v1_loc = []
+        for i, w in enumerate(w1):
+            v1_loc.append(self.lemmas[w]["order"])
+            if not i:
+                v1 = U[v1_loc[-1], :].reshape(dim, 1)
+            else:
+                v1 += U[v1_loc[-1], :].reshape(dim, 1)
+        v1 /= (i + 1)
+        v1 = v1 / np.linalg.norm(v1)
+
+        w2 = filter(lambda x: x in self.lemmas, w2)
+        v2_loc = []
+        for i, w in enumerate(w2):
+            v2_loc.append(self.lemmas[w]["order"])
+            if not i:
+                v2 = U[v2_loc[-1], :].reshape(dim, 1)
+            else:
+                v2 += U[v2_loc[-1], :].reshape(dim, 1)
+        v2 /= (i + 1)
+        v2 = v2 / np.linalg.norm(v2)
+
+        U = np.delete(U, v1_loc + v2_loc, axis=0)
+        similarities = np.dot(U, v1)
+
+        return (np.dot(v1.T, v2) > similarities).sum() / similarities.size
+
+    def fisher_test(self, w1, w2, w3):
+        w1 = filter(lambda x: x in self.lemmas, w1)
+        v1_loc = []
+        for l in w1:
+            v1_loc.append(self.lemmas[l]["order"])
+
+        w2 = filter(lambda x: x in self.lemmas, w2)
+        v2_loc = []
+        for l in w2:
+            v2_loc.append(self.lemmas[l]["order"])
+
+        w3 = filter(lambda x: x in self.lemmas, w3)
+        v3_loc = []
+        for l in w3:
+            v3_loc.append(self.lemmas[l]["order"])
+
+        csr_matrix = self.cooc_matrix.tocsr()
+
+        if not v1_loc or not v2_loc or not v3_loc:
+            return None
+        else:
+            for i, l1 in enumerate(v1_loc):
+                if not i:
+                    row1_sums = csr_matrix.getrow(l1).todense()
+                else:
+                    row1_sums += csr_matrix.getrow(l1).todense()
+
+            for i, l2 in enumerate(v2_loc):
+                if not i:
+                    row2_sums = csr_matrix.getrow(l2).todense()
+                else:
+                    row2_sums += csr_matrix.getrow(l2).todense()
+
+        w1_and_w3 = row1_sums[:, v3_loc].sum()
+        w1_and_not_w3 = row1_sums.sum() - w1_and_w3
+        w2_and_w3 = row2_sums[:, v3_loc].sum()
+        w2_and_not_w3 = row2_sums.sum() - w2_and_w3
+
+        cont_table = np.array([[w1_and_w3, w1_and_not_w3],
+                               [w2_and_w3, w2_and_not_w3]])
+
+        return(fisher_exact(cont_table)[1])
+
+    def w_freq(self, w1):
+        freq = 0
+        for w in w1:
+            if w in self.lemmatized_index:
+                freq += self.lemmatized_index[w]["total"]
+        return freq / self.n_tokens
 
 
-  @staticmethod
-  def sum_through_coo(matrix1, matrix2):
-    m = matrix1.tocoo()
-    n = matrix2.tocoo()
-    d = np.concatenate((m.data, n.data))
-    r = np.concatenate((m.row, n.row))
-    c = np.concatenate((m.col, n.col))
-    result = coo_matrix((d,(r,c)))
-    result = result.tocsr()
-    return result
+if __name__ == "__main__":
 
-  @staticmethod
-  def save_partial(matrix, movie_name, movie_id, year):
-    folder_path = CONFIG.datasets_path + "partials/" + str(year) + "/"
-    if not os.path.exists(folder_path):
-      os.makedirs(folder_path)
-    pickle_dump(matrix, folder_path + str(int(movie_id)) + "-" + str(movie_name) + ".p")
+    def create_embeddings(length, sample, svd=False, ppmi=False):
+        top_movies = pd.read_csv(CONFIG.datasets_path + "filtered_index.txt", sep="\t")
+        top_movies["imdb_genre"] = [eval(e) if not isinstance(e, float) else np.nan for e in top_movies.imdb_genre]
 
-  @staticmethod
-  def save_to_file(matrix, word_to_index, year, window_size):
-    folder_path = CONFIG.datasets_path + "cooccurrence_matrices_" + str(window_size) + "/"
-    if not os.path.exists(folder_path):
-      os.makedirs(folder_path)
-    pickle_dump(matrix, folder_path + str(year) + ".p")
-    with open(folder_path + str(year) + "_reference.p", 'wb') as file2:
-      pickle.dump(word_to_index, file2, protocol=pickle.HIGHEST_PROTOCOL)
+        if sample == "family":
+            mask = [((not isinstance(e, float)) and (("Family" in e) or ("Animation" in e))) for e in top_movies.imdb_genre]
+            top_movies = top_movies[mask]
 
-  @staticmethod
-  def build_all(window_size = 5):
-    print("Window size: ", window_size)
-    gen = CooccurrenceMatrix(window_size)
-    folder_path = CONFIG.datasets_path + "cooccurrence_matrices_" + str(window_size) + "/"
-    if os.path.exists(folder_path):
-      files = os.listdir(folder_path)
-      start = 1930 + math.floor(len(files) / 2)
-    else:
-      os.makedirs(folder_path)
-      start = 1930
+        # By 5 year periods
+        for y in YEAR_RANGES:
+            print(y)
+            mask = top_movies.sub_id.notnull()
+            mask = mask & (top_movies.imdb_year.isin(set(y)))
+            subs_ids = top_movies.loc[mask]
 
-    print("STARTS IN: ", start)
-    for year in range(start,2016):
-      print("HERE STARTS YEAR: ", year)
-      gen.build(year)
-    gen.build_year_sums()
+            cm = CooccurrenceMatrix(subs_ids, length, min_freq=1)
 
+            if svd:
+                cm.build_svd(300)
+                with open(CONFIG.datasets_path + "cooccurrence_matrices/svd/%s/%02d/%d.p" % (sample, length, y[0]), "wb") as f:
+                    pickle.dump(cm, f)
 
-  def build_year_sums(self):
-    result = {}
-    for year in range(1930,2016):
-      with open(CONFIG.datasets_path + "cooccurrence_matrices_" + str(self.window_size) + "/" + str(year) + ".p", 'rb') as f:
-        matrix = pickle.load(f)
-      result[year] = matrix.sum()
-    with open(CONFIG.datasets_path + "cooccurrence_matrices_" + str(self.window_size) + "/words_per_year.p", 'wb') as file:
-      pickle.dump(result, file, protocol=pickle.HIGHEST_PROTOCOL)
+            if ppmi:
+                cm.build_cooc_matrix()
+                with open(CONFIG.datasets_path + "cooccurrence_matrices/ppmi/%s/%02d/%d.p" % (sample, length, y[0]), "wb") as f:
+                    pickle.dump(cm, f)
 
+        # 2000 onwards
+        y = range(2010, 2017)
+        print(y)
+        mask = top_movies.sub_id.notnull()
+        mask = mask & (top_movies.imdb_year.isin(set(y)))
+        subs_ids = top_movies.loc[mask]
 
+        cm = CooccurrenceMatrix(subs_ids, length, min_freq=1)
 
-class MacOSFile(object):
+        if svd:
+            cm.build_svd(300)
+            with open(CONFIG.datasets_path + "cooccurrence_matrices/svd/%s/%02d/2000_onwards.p" % (sample, length), "wb") as f:
+                pickle.dump(cm, f)
 
-  def __init__(self, f):
-    self.f = f
+        if ppmi:
+            cm.build_cooc_matrix()
+            with open(CONFIG.datasets_path + "cooccurrence_matrices/ppmi/%s/%02d/2000_onwards.p" % (sample, length), "wb") as f:
+                pickle.dump(cm, f)
 
-  def __getattr__(self, item):
-    return getattr(self.f, item)
+    def load_embeddings(length, sample, metric):
+        embeddings = {}
+        for y in YEAR_RANGES:
+            print(y[0])
+            if metric == "svd":
+                with open(CONFIG.datasets_path + "cooccurrence_matrices/svd/%s/%02d/%d.p" % (sample, length, y[0]), "rb") as f:
+                    emb_tmp = pickle.load(f)
+                emb_tmp.n_tokens = sum([emb_tmp.lemmatized_index[e]["total"] for e in emb_tmp.lemmatized_index])
+                embeddings[y[0]] = emb_tmp
+                del embeddings[y[0]].contexts
+                del embeddings[y[0]].S
+                del embeddings[y[0]].lemmas_order
+                del embeddings[y[0]].Vt
+            elif metric == "ppmi":
+                with open(CONFIG.datasets_path + "cooccurrence_matrices/ppmi/%s/%02d/%d.p" % (sample, length, y[0]), "rb") as f:
+                    emb_tmp = pickle.load(f)
+                emb_tmp.n_tokens = sum([emb_tmp.lemmatized_index[e]["total"] for e in emb_tmp.lemmatized_index])
+                embeddings[y[0]] = emb_tmp
+                del embeddings[y[0]].contexts
+                del embeddings[y[0]].lemmas_order
+            gc.collect()
 
-  def write(self, buffer):
-    n = len(buffer)
-    print("writing total_bytes=%s..." % n, flush=True)
-    idx = 0
-    while idx < n:
-      batch_size = min(n - idx, 1 << 31 - 1)
-      print("writing bytes [%s, %s)... " % (idx, idx + batch_size), end="", flush=True)
-      self.f.write(buffer[idx:idx + batch_size])
-      print("done.", flush=True)
-      idx += batch_size
+        # 2000 onwards
+        if metric == "svd":
+            with open(CONFIG.datasets_path + "cooccurrence_matrices/svd/%s/%02d/2000_onwards.p" % (sample, length), "rb") as f:
+                emb_tmp = pickle.load(f)
+            embeddings["2000_onwards"] = emb_tmp
+            del embeddings["2000_onwards"].contexts
+            del embeddings["2000_onwards"].S
+            del embeddings["2000_onwards"].lemmas_order
+            del embeddings["2000_onwards"].Vt
+        elif metric == "ppmi":
+            with open(CONFIG.datasets_path + "cooccurrence_matrices/ppmi/%s/%02d/2000_onwards.p" % (sample, length), "rb") as f:
+                emb_tmp = pickle.load(f)
+            embeddings["2000_onwards"] = emb_tmp
+            del embeddings["2000_onwards"].contexts
+            del embeddings["2000_onwards"].lemmas_order
+        gc.collect()
+        return embeddings
 
-def pickle_dump(obj, file_path):
-  with open(file_path, "wb") as f:
-    return pickle.dump(obj, MacOSFile(f), protocol=pickle.HIGHEST_PROTOCOL)
+    def time_evol_svd(embeddings, w1, w2, dim=300):
+        evolution = []
+        for y in YEAR_RANGES:
+            try:
+                evolution.append((y[0], embeddings[y[0]].dist_svd(w1, w2, dim)))
+            except Exception:
+                evolution.append((y[0], None))
+        return evolution
+
+    def time_evol_ppmi(embeddings, w1, w2, alpha=0.75):
+        evolution = []
+        for y in YEAR_RANGES:
+            evolution.append((y[0], embeddings[y[0]].ppmi(w1, w2, alpha)))
+        return evolution
+
+    def time_evol_chi2(embeddings, w1, w2, w3):
+        evolution = []
+        for y in YEAR_RANGES:
+            evolution.append((y[0], embeddings[y[0]].fisher_test(w1, w2, w3)))
+        return evolution
+
+    def gen_evol_table(w1, w2, w3, embeddings, filename):
+
+        dists = zip(time_evol_ppmi(embeddings, w1, w3),
+                    time_evol_ppmi(embeddings, w2, w3),
+                    time_evol_chi2(embeddings, w1, w2, w3))
+
+        res = ["year\the\tshe\tp_value"]
+        for (e1, e2), (e3, e4), (e5, e6) in dists:
+            res.append("\t".join([str(e1), str(e2), str(e4), str(e6)]))
+        with open("/home/ramiro/Dropbox/bias_holllywood/data/%s.txt" % filename, "w") as f:
+            f.write("\n".join(res) + "\n")
+
+    def gen_diff(w1, w2, w3, embeddings, filename, alpha=0.75):
+
+        dists = (embeddings["2000_onwards"].ppmi(w1, w3, alpha),
+                 embeddings["2000_onwards"].ppmi(w2, w3, alpha),
+                 embeddings["2000_onwards"].fisher_test(w1, w2, w3))
+
+        res = ["he\tshe\tp_value", "\t".join([str(e) for e in dists])]
+
+        with open("/home/ramiro/Dropbox/bias_holllywood/data/%s.txt" % filename, "w") as f:
+            f.write("\n".join(res) + "\n")
+
+    def evol_freq(w1, embeddings):
+        evol_freq = []
+        for y in YEAR_RANGES:
+            evol_freq.append((y[0], embeddings[y[0]].w_freq(w1)))
+        return evol_freq
+
+    """ Avoid this step if the embeddings are already created
+    for l in [15, 45, 30]:
+        create_embeddings(l, "full", ppmi=True)
+        create_embeddings(l, "family", ppmi=True)
+    """
+
+    embeddings_full = load_embeddings(30, "full", metric="ppmi")
+    embeddings_family = load_embeddings(30, "family", metric="ppmi")
+
+    feminine_roles = ["beautician", "caregiver", "cheerleader", "dancer", "decorator", "designer",
+                      "dietician", "florist", "hairdresser", "homemaker", "housekeeper", "model",
+                      "nanny", "nurse", "receptionist", "stylist", "typist"]
+
+    masculine_roles = ["architect", "carpenter", "coach", "contractor", "detective", "electrician",
+                       "engineer", "farmer", "firefighter", "gambler", "inventor", "machinist",
+                       "mechanic", "officer", "physicist", "pilot", "programmer", "rancher",
+                       "sheriff", "soldier"]
+
+    neutral_roles = ["assistant", "cashier", "clerk", "doctor", "editor", "lawyer", "poet",
+                     "reporter", "servant", "worker"]
+
+    feminine_traits = ["affectionate", "caring", "cheerful", "compassionate", "delicate", "emotional",
+                       "flatterable", "gentle", "gossipy", "humble", "loyal", "moody", "nagging", "polite",
+                       "sensitive", "shy", "sympathetic", "tender", "understanding", "warm"]
+
+    masculine_traits = ["aggressive", "ambitious", "analytical", "arrogant", "assertive", "athletic",
+                        "authoritative", "bold", "capable", "charismatic", "competitive", "confident",
+                        "crude", "daring", "decisive", "dominant", "forceful", "independent",
+                        "individualistic", "reckless", "unyielding", "vulgar"]
+
+    neutral_traits = ["adaptable", "candid", "childlike", "conceited", "conscientious", "conventional",
+                      "earnest", "forward", "friendly", "gullible", "happy", "helpful", "inefficient",
+                      "irrational", "jealous", "likable", "outspoken", "reliable", "ridiculous",
+                      "secretive", "sincere", "solemn", "stubborn", "tactful", "theatrical", "truthful",
+                      "unpredictable", "unsystematic", "yielding"]
+
+    # male_names = ["james", "john", "robert", "michael", "william", "david", "richard", "joseph",
+    #              "thomas", "charles", "christopher", "daniel", "matthew", "anthony", "donald", "mark",
+    #              "paul", "steven", "andrew", "kenneth", "george", "joshua", "kevin", "brian", "edward",
+    #              "ronald", "timothy", "jason", "jeffrey", "ryan", "gary", "jacob", "nicholas", "eric",
+    #              "stephen", "jonathan", "larry", "justin", "scott", "frank", "brandon", "raymond",
+    #              "gregory", "benjamin", "samuel", "patrick", "alexander", "jack", "dennis", "jerry",
+    #              "tyler", "aaron", "henry", "douglas", "jose", "peter", "adam", "zachary", "nathan",
+    #              "walter", "harold", "kyle", "carl", "arthur", "gerald", "roger", "keith", "jeremy",
+    #              "terry", "lawrence", "sean", "christian", "albert", "joe", "ethan", "austin", "jesse",
+    #              "willie", "billy", "bryan", "bruce", "jordan", "ralph", "roy", "noah", "dylan", "eugene",
+    #              "wayne", "alan", "juan", "louis", "russell", "gabriel", "randy", "philip", "harry",
+    #              "vincent", "bobby", "johnny", "logan"]
+
+    # female_names = ["mary", "patricia", "jennifer", "elizabeth", "linda", "barbara", "susan", "jessica",
+    #                "margaret", "sarah", "karen", "nancy", "betty", "lisa", "dorothy", "sandra", "ashley",
+    #                "kimberly", "donna", "carol", "michelle", "emily", "amanda", "helen", "melissa",
+    #                "deborah", "stephanie", "laura", "rebecca", "sharon", "cynthia", "kathleen", "amy",
+    #                "shirley", "anna", "angela", "ruth", "brenda", "pamela", "nicole", "katherine", "virginia",
+    #                "catherine", "christine", "samantha", "debra", "janet", "rachel", "carolyn", "emma",
+    #                "maria", "heather", "diane", "julie", "joyce", "evelyn", "frances", "joan", "christina",
+    #                "kelly", "victoria", "lauren", "martha", "judith", "cheryl", "megan", "andrea", "ann",
+    #                "alice", "jean", "doris", "jacqueline", "kathryn", "hannah", "olivia", "gloria", "marie",
+    #                "teresa", "sara", "janice", "julia", "grace", "judy", "theresa", "rose", "beverly",
+    #                "denise", "marilyn", "amber", "madison", "danielle", "brittany", "diana", "abigail", "jane",
+    #                "natalie", "lori", "tiffany", "alexis", "kayla"]
+
+    # smart_words = ["ingenious", "genius", "geniously",
+    #               "brilliant", "brilliance", "brilliantly",
+    #               "clever", "cleverness", "cleverly",
+    #               "intelligent", "intelligence", "intelligently"]
+
+    smart_words = ["ingenious", "genius", "ingeniousness", "ingeniously",
+                   "bright", "brightness", "brightly",
+                   "brilliant", "brilliance", "brilliantly"
+                   "clever", "cleverness", "cleverly",
+                   "intelligent", "intelligence", "intelligently"]
+
+    smart_words_jf = ["precocious", "resourceful", "inquisitive", "sagacious", "inventive", "astute", "adaptable",
+                      "reflective", "discerning", "intuitive", "inquiring", "judicious", "analytical", "luminous",
+                      "venerable", "imaginative", "shrewd", "thoughtful", "sage", "smart", "ingenious", "clever",
+                      "brilliant", "logical", "intelligent", "apt", "genius", "wise"]
+
+    #"gifted", "giftedness", "giftedly",
+    #"smart", "smartness",
+    #"inventive", "inventiveness",
+    #"expert", "expertise",
+    #"erudite", "eruditeness"
+    #"bright", "brightness",
+    #"astute", "astuteness"
+
+    male_pronouns = ["he", "his", "him", "himself"]
+    female_pronouns = ["she", "her", "hers", "herself"]
+
+    # Data for relative evolution
+    def relative_evol(embeddings, filename):
+        evol_man, evol_fem = evol_freq(male_pronouns, embeddings), evol_freq(female_pronouns, embeddings)
+        evol_data = ["year\tn\the\tshe"]
+        for e in range(len(evol_man)):
+            evol_data.append("\t".join([str(evol_man[e][0]), str(embeddings[evol_man[e][0]].n_subs), str(evol_man[e][1]), str(evol_fem[e][1])]))
+        with open("/home/ramiro/Dropbox/bias_holllywood/data/%s.txt" % filename, "w") as f:
+            f.write("\n".join(evol_data) + "\n")
+
+    relative_evol(embeddings_full, "evol_freq_full")
+    relative_evol(embeddings_family, "evol_freq_family")
+
+    # Data for plot 1-a
+    gen_diff(male_pronouns, female_pronouns, masculine_roles, embeddings_full, "mp_fp_mr_fu_diff")
+    gen_diff(male_pronouns, female_pronouns, feminine_roles, embeddings_full, "mp_fp_fr_fu_diff")
+    gen_diff(male_pronouns, female_pronouns, neutral_roles, embeddings_full, "mp_fp_nr_fu_diff")
+    gen_diff(male_pronouns, female_pronouns, masculine_roles, embeddings_family, "mp_fp_mr_fm_diff")
+    gen_diff(male_pronouns, female_pronouns, feminine_roles, embeddings_family, "mp_fp_fr_fm_diff")
+    gen_diff(male_pronouns, female_pronouns, neutral_roles, embeddings_family, "mp_fp_nr_fm_diff")
+
+    # Data for plot 1-b
+    gen_evol_table(male_pronouns, female_pronouns, masculine_roles, embeddings_full, "mp_fp_mr_fu_evol")
+    gen_evol_table(male_pronouns, female_pronouns, feminine_roles, embeddings_full, "mp_fp_fr_fu_evol")
+    gen_evol_table(male_pronouns, female_pronouns, neutral_roles, embeddings_full, "mp_fp_nr_fu_evol")
+    gen_evol_table(male_pronouns, female_pronouns, masculine_roles, embeddings_family, "mp_fp_mr_fm_evol")
+    gen_evol_table(male_pronouns, female_pronouns, feminine_roles, embeddings_family, "mp_fp_fr_fm_evol")
+    gen_evol_table(male_pronouns, female_pronouns, neutral_roles, embeddings_family, "mp_fp_nr_fm_evol")
+
+    # Data for plot 1-b
+    gen_diff(male_pronouns, female_pronouns, smart_words, embeddings_full, "mp_fp_sw_fu_diff")
+    gen_diff(male_pronouns, female_pronouns, smart_words, embeddings_family, "mp_fp_sw_fm_diff")
+
+    # Data for plot 2-b
+    gen_evol_table(male_pronouns, female_pronouns, smart_words, embeddings_full, "mp_fp_sw_fu_evol")
+    gen_evol_table(male_pronouns, female_pronouns, smart_words, embeddings_family, "mp_fp_sw_fm_evol")
+
+    # Data for plot S1-a
+    gen_diff(male_pronouns, female_pronouns, masculine_traits, embeddings_full, "mp_fp_mt_fu_diff")
+    gen_diff(male_pronouns, female_pronouns, feminine_traits, embeddings_full, "mp_fp_ft_fu_diff")
+    gen_diff(male_pronouns, female_pronouns, neutral_traits, embeddings_full, "mp_fp_nt_fu_diff")
+    gen_diff(male_pronouns, female_pronouns, masculine_traits, embeddings_family, "mp_fp_mt_fm_diff")
+    gen_diff(male_pronouns, female_pronouns, feminine_traits, embeddings_family, "mp_fp_ft_fm_diff")
+    gen_diff(male_pronouns, female_pronouns, neutral_traits, embeddings_family, "mp_fp_nt_fm_diff")
+
+    # Data for plot S1-b
+    gen_evol_table(male_pronouns, female_pronouns, masculine_traits, embeddings_full, "mp_fp_mt_fu_evol")
+    gen_evol_table(male_pronouns, female_pronouns, feminine_traits, embeddings_full, "mp_fp_ft_fu_evol")
+    gen_evol_table(male_pronouns, female_pronouns, neutral_traits, embeddings_full, "mp_fp_nt_fu_evol")
+    gen_evol_table(male_pronouns, female_pronouns, masculine_traits, embeddings_family, "mp_fp_mt_fm_evol")
+    gen_evol_table(male_pronouns, female_pronouns, feminine_traits, embeddings_family, "mp_fp_ft_fm_evol")
+    gen_evol_table(male_pronouns, female_pronouns, neutral_traits, embeddings_family, "mp_fp_nt_fm_evol")
+
+    # Data for plot S2-a
+    gen_diff(male_pronouns, female_pronouns, smart_words_jf, embeddings_full, "mp_fp_swj_fu_diff")
+    gen_diff(male_pronouns, female_pronouns, smart_words_jf, embeddings_family, "mp_fp_swj_fm_diff")
+
+    # Data for plot S2-b
+    gen_evol_table(male_pronouns, female_pronouns, smart_words_jf, embeddings_full, "mp_fp_swj_fu_evol")
+    gen_evol_table(male_pronouns, female_pronouns, smart_words_jf, embeddings_family, "mp_fp_swj_fm_evol")

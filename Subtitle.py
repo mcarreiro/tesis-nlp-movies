@@ -2,155 +2,107 @@
 import sys
 sys.path.append('..')
 import pysrt
-import gzip
-import repo.config as CONFIG
+import config as CONFIG
 from pysrt import SubRipTime
-from repo.tokenizer import Tokenizer
+from Tokenizer import Tokenizer
 
-flatten = lambda l: [item for sublist in l for item in sublist]
+
+tokenizer = Tokenizer()
+
+
+def flatten(l):
+    return [item for sublist in l for item in sublist]
+
 
 class Subtitle(object):
-  """ Lee el archivo srt dado un número de pelicula y devuelve el texto y
-    y los tiempos."""
+    """ Lee el archivo srt dado un número de pelicula y devuelve el texto y
+      y los tiempos."""
 
-  def __init__(self, movie_file_number):
-    """ Inicia la clase, lee el archivo .srt y lo parsea """
-    self.movie_file_number = str(movie_file_number)
-    self.file_path = self.file_name(CONFIG.subtitles_path)
+    def __init__(self, movie_sub_number):
+        """ Inicia la clase, lee el archivo .srt y lo parsea """
+        self.movie_sub_number = str(movie_sub_number)
+        self.filename = CONFIG.subtitles_path + self.movie_sub_number + ".srt"
+        self.all_frames = None
 
-    # Lee el archivo srt
-    with gzip.open(self.file_path) as f:
-      file_content = f.read()
-      try:
-        self.raw_sub = pysrt.from_string(file_content.decode("utf-8"))
-      except:
-        self.raw_sub = pysrt.from_string(file_content.decode("latin-1"))
+        # Lee el archivo srt
+        with open(self.filename, "rb") as f:
+            file_content = f.read()
+            try:
+                self.raw_sub = pysrt.from_string(file_content.decode("utf-8"))
+            except Exception:
+                self.raw_sub = pysrt.from_string(file_content.decode("latin-1"))
 
+    def full_tokens(self):
+        full_tokens = []
+        self.all_frames = []
+        for f in self.raw_sub:
+            tokens = tokenizer.full_run(f.text_without_tags)
+            full_tokens.extend(tokens)
+            self.all_frames.append({"start": f.start,
+                                    "end": f.end,
+                                    "tokens": tokens})
+        return full_tokens
 
-  def file_name(self, subtitles_path):
-    """ Arma el nombre de archivo para abrir el srt """
-    tmp_name = zip(self.movie_file_number, self.movie_file_number[::-1])
-    file_path = [subtitles_path]
-    file_name = []
+    def generate_word_contexts(self, length):
+        self.word_contexts = {}
+        self.len_windows = []
+        delta = SubRipTime.from_ordinal(int(length) * 1000)  # (ordinal is milliseconds)
+        if not self.all_frames:
+            self.full_tokens()
 
-    for i, (s1, s2) in enumerate(tmp_name):
-      file_name.append(s1)
-      if i < 4:
-        file_path.insert(0, s2 + "/")
+        for i, f in enumerate(self.all_frames):
+            # Get data from frame
+            f_start = f["start"]
+            f_end = f["end"]
+            f_tokens = f["tokens"]
+            start_of_window = f_start - delta
+            end_of_window = f_end + delta
 
-    return "".join(file_path[::-1]) + "".join(file_name) + ".gz"
+            if not f_tokens:  # The frame has no tokens
+                continue
 
+            f_context = f["tokens"].copy()  # Initialization of the context
 
-  def context_of(self, word, time, length=10):
-    t = SubRipTime.coerce(time) + 1
-    sub = self.raw_sub.at(t)
-    context = []
-    if sub:
-      sub = sub[0]
-      delta = SubRipTime.from_ordinal(int(length) * 1000) # (ordinal is milliseconds)
-      start = sub.start - delta
-      end = sub.end + delta
-      subs = self.raw_sub.slice(ends_after=start, starts_before=end)
-      tokenizer = Tokenizer()
-      for line in subs:
-        tokens = tokenizer.full_run(line.text)
-        context = context + tokens
-    return list(context)
+            # Add tokens of preceding frames
+            j = -1
+            while (i + j) >= 0 and self.all_frames[i + j]["end"] >= start_of_window:
+                f_context.extend(self.all_frames[i + j]["tokens"])
+                j -= 1
 
+            # Add tokens of later frames
+            j = 1
+            while (i + j) <= (len(self.all_frames) - 1) and self.all_frames[i + j]["start"] <= end_of_window:
+                f_context.extend(self.all_frames[i + j]["tokens"])
+                j += 1
 
-  def window_for(self, word, time, length=10):
-    t = SubRipTime.coerce(time) + 1
-    sub = self.raw_sub.at(t)
-    context = []
-    if sub:
-      sub = sub[0]
-      delta = SubRipTime.from_ordinal(int(length) * 1000) # (ordinal is milliseconds)
-      start = sub.start - delta
-      end = sub.end + delta
-      subs = self.raw_sub.slice(ends_after=start, starts_before=end)
-      return list(subs)
-    else:
-      return []
+            # Add to context dictionary
+            for t in f["tokens"]:
+                self.len_windows.append(len(f_context) - 1)  # This is for the length of windows analysis
+                if t not in self.word_contexts:
+                    self.word_contexts[t] = {}
+                for c in f_context:
+                    self.word_contexts[t][c] = self.word_contexts[t].get(c, 0) + 1
+                self.word_contexts[t][t] -= 1
+                if self.word_contexts[t][t] == 0:
+                    del self.word_contexts[t][t]
 
+        if not self.check_correct_start_end():  # If end and star are not correct, the matrices are not symmmetric
+            self.correct_symmetry()
 
-  def word_count(self):
-    return sum([len(x.split(' ')) for x in self.raw_sub.text.split('\n')])
+        return(self.word_contexts)
 
+    def correct_symmetry(self):
+        for i, t1 in enumerate(self.word_contexts.copy()):
+            for t2 in self.word_contexts[t1]:
+                v = max(self.word_contexts[t1].get(t2, 0), self.word_contexts[t2].get(t1, 0))
+                self.word_contexts[t1][t2] = v
+                self.word_contexts[t2][t1] = v
 
-  def full_text(self):
-    return self.raw_sub.text
+    def check_correct_start_end(self):
+        for i in range(1, len(self.all_frames)):
+            if (self.all_frames[i - 1]["end"] > self.all_frames[i]["start"]):
+                return False
+        return True
 
-
-  def context_for_every_sub(self, length=5, with_actual_sub=False):
-    """
-    Returns an array containing dicts: {target_sub: ['a','b'], context: ['c','d']}
-    This means every word in the target sub has as context all others in target and all in context.
-    """
-    tokenizer = Tokenizer()
-    result = []
-    delta = SubRipTime.from_ordinal(int(length) * 1000) # (ordinal is milliseconds)
-
-    active = None
-    window = []
-    for i, sub in enumerate(self.raw_sub):
-      # Invariant: window contains current sub + subs within reach going backwards
-      # I need to find if any subs forwards fit the window
-      # And delete those which fall out when advancing current
-      # `sub` is a SubRipItem
-      if len(window) == 0:
-        active_subs_tokens = tokenizer.full_run(sub.text)
-        if len(active_subs_tokens) > 0:
-          # Add current to window
-          window.append({'sub': sub, 'tokens': active_subs_tokens, 'i': i})
-          active = 0
-        else:
-          # Subs with symbols, like music, or CAPS DESCRIPTIONS OF ACTION
-          continue
-      else:
-        if sub.text != window[active]["sub"].text:
-          # This sub has been ommitted from the window because it tokenizes to []
-          # So now the window and the iteration are not matching up, so we skip.
-          continue
-      # Find if any after last in window now fall in range
-      end_of_window = sub.end + delta
-      j = window[len(window)-1]["i"] + 1 # if len(window) > 1 else i+1
-      while j < len(self.raw_sub):
-        next_fwd = self.raw_sub[j]
-        if next_fwd.start < end_of_window:
-          tokens = tokenizer.full_run(next_fwd.text)
-          if len(tokens) > 0:
-            window.append({'sub': next_fwd, 'tokens': tokens, 'i': j})
-          j = j+1
-        else:
-          break
-      # Append tokens in window to result
-      context = flatten([item['tokens'] for k,item in enumerate(window) if k != active])
-      result.append([window[active]['tokens'],context])
-
-      # Move active forward and remove previous subs falling out of range
-      if len(window)-1 > active:
-        current_sub = window[active]["sub"]
-        active = active+1
-        new_start = window[active]["sub"].start - delta
-        while window[0]["sub"] != current_sub:
-          if window[0]["sub"].end > new_start:
-            break
-          else:
-            window = window[1:]
-            active = active-1
-      else:
-        window = []
-        active = None
-    return result
-
-  def subs_with(self, target_words, context_words):
-    results = []
-    for sub in self.raw_sub:
-      for c in context_words:
-        all_subs = self.window_for(c, sub.start, length=10)
-        for t in target_words:
-          for s in all_subs:
-            if t in s.text:
-              results.append(all_subs)
-              break
-    return results
+    def bad_beginnings(self):
+        return [e for e in self.all_frames if (e["start"] > e["end"])]
